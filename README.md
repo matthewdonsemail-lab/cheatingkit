@@ -24,17 +24,22 @@ The writing rule is the opposite of the usual one: **make the wording less compl
 - Start with the thing in front of you, not with the tooling.
 - Say hard things in short sentences.
 - Every answer ends somewhere runnable — not in an archived note.
-- Minimal by default: no build step, no dependency tree, no jargon wall.
+- Minimal by default: Vite + Tailwind only, no component framework, no jargon wall.
 
 ## 4. Current shape of the repo
 
 ```
 cheatingkit/
-├── index.html   # the whole site: HTML + inline CSS, no build step
-└── README.md    # this outline
+├── index.html        # markup with inline Tailwind utility classes
+├── src/
+│   ├── main.js       # imports the stylesheet
+│   └── style.css     # @import tailwindcss + @theme design tokens
+├── vite.config.js    # @tailwindcss/vite plugin
+├── package.json
+└── README.md         # this outline
 ```
 
-The site is deliberately one file. Styles are inline in a `<style>` block with CSS variables; there is no framework, no package manager, and no remote dependency.
+It is a Vite project. Tailwind is compiled by `@tailwindcss/vite`; utility classes are written inline in `index.html`. The opencode.ai tokens live as Tailwind theme variables in `src/style.css`, so they can be used as `bg-base`, `text-muted`, `text-accent`, etc. No component framework, no UI kit.
 
 ## 5. Design reference
 
@@ -69,9 +74,9 @@ Layout posture: flat stacked sections separated by hairlines, left-aligned, one 
 ## 7. Run it locally
 
 ```bash
-git clone <your-fork-url> cheatingkit
 cd cheatingkit
-open index.html
+npm install
+npm run dev
 ```
 
-Works offline. Opens directly in a browser.
+Then open http://localhost:5173. `npm run build` writes a static bundle to `dist/`.
