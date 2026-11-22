@@ -1,4 +1,8 @@
-@import "tailwindcss";
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+/* The source site hides its hero until its product carousel mounts. Ours has no carousel. */
+[data-site][data-page="home"] [data-component="hero"] { visibility: visible !important; }
+
 
 /* Design tokens taken from opencode.ai's live computed styles. */
 @theme {
@@ -15,18 +19,3 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
-@layer base {
-  html { background: var(--color-base); color-scheme: dark; }
-  body {
-    margin: 0;
-    background: var(--color-base);
-    color: var(--color-fg);
-    font-family: var(--font-sans);
-    font-size: 17px;
-    line-height: 1.55;
-    font-weight: 400;
-    -webkit-font-smoothing: antialiased;
-  }
-  a:hover { color: var(--color-link); }
-  a:focus-visible { outline: 2px solid var(--color-link); outline-offset: 3px; }
-}

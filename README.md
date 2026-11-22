@@ -30,16 +30,17 @@ The writing rule is the opposite of the usual one: **make the wording less compl
 
 ```
 cheatingkit/
-├── index.html        # markup with inline Tailwind utility classes
+├── public/opencode/  # opencode.ai's actual shell.css + home.css and their 10 web fonts
+├── index.html        # markup using the source site's data-* component attributes
 ├── src/
 │   ├── main.js       # imports the stylesheet
-│   └── style.css     # @import tailwindcss + @theme design tokens
+│   └── style.css     # Tailwind utilities (no preflight) + one hero visibility override
 ├── vite.config.js    # @tailwindcss/vite plugin
 ├── package.json
 └── README.md         # this outline
 ```
 
-It is a Vite project. Tailwind is compiled by `@tailwindcss/vite`; utility classes are written inline in `index.html`. The opencode.ai tokens live as Tailwind theme variables in `src/style.css`, so they can be used as `bg-base`, `text-muted`, `text-accent`, etc. No component framework, no UI kit.
+It is a Vite project. Tailwind utilities are available via `@tailwindcss/vite`, but the visual system is opencode.ai's own stylesheet, fetched from `https://opencode.ai/_build/assets/` and served locally from `public/opencode/`, including its web fonts (`OpenTUI Mono` and `Inter`). The markup mirrors the source page's `data-component` / `data-slot` / `data-page` attributes so those rules apply directly. No component framework, no UI kit.
 
 ## 5. Design reference
 
