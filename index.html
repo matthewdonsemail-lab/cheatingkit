@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>cheatingkit — reverse engineer anything</title>
+<style>
+/* Design tokens lifted from opencode.ai (computed values, captured 2026-11-23).
+   Near-black base, square corners, mono headings, one green accent. */
+:root{
+  --bg:#0c0c0c;
+  --surface:#1a1a1a;
+  --raised:#161616;
+  --line:#242424;
+  --ink:#fafafa;
+  --muted:#aeaeae;
+  --dim:#8f8f8f;
+  --green:#54d483;
+  --blue:#6b8fff;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+  --sans:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+html{background:var(--bg);color:var(--ink)}
+body{margin:0;font:400 17px/1.55 var(--sans);background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:inherit;text-decoration:none}
+a:hover{color:var(--blue)}
+:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
+.wrap{max-width:720px;margin:0 auto}
+
+/* top bar */
+.topbar{border-bottom:1px solid var(--line)}
+.topbar .wrap{display:flex;align-items:center;gap:24px;height:56px;padding:0 24px}
+.brand{display:flex;align-items:center;gap:7px;font:400 19px/1 var(--mono);letter-spacing:-.02em}
+.brand i{width:6px;height:6px;background:var(--green);border-radius:50%;flex:none}
+.nav{display:flex;gap:18px;margin-left:auto;font:400 16px/1 var(--mono)}
+.nav a{color:var(--muted)}
+.nav a:hover{color:var(--blue)}
+
+/* page */
+main{padding:71px 24px 0}
+section{padding-top:40px}
+section+section{margin-top:40px;border-top:1px solid var(--line)}
+h2{margin:0 0 16px;font:400 25.5px/1.55 var(--mono);letter-spacing:-.01em;color:var(--ink)}
+.lede{margin:0;max-width:64ch;color:var(--muted)}
+.hero h1{margin:16px 0 20px;font:400 48px/1.05 var(--mono);letter-spacing:-.03em;color:var(--ink);text-wrap:balance}
+.kicker{font:400 14px/1 var(--mono);letter-spacing:.06em;color:var(--dim)}
+.kicker b{font-weight:400;color:var(--green)}
+.hero p{margin:0;max-width:58ch;color:var(--muted)}
+
+/* flat rows, not cards */
+.rows{margin-top:20px}
+.row{display:grid;grid-template-columns:36px 1fr;gap:14px;padding:18px 0;border-top:1px solid var(--line)}
+.row .n{font:400 14px/1.5 var(--mono);color:var(--dim)}
+.row h3{margin:0 0 5px;font:400 17px/1.55 var(--sans);color:var(--ink)}
+.row p{margin:0;max-width:62ch;color:var(--muted)}
+
+/* terminal block */
+.term{margin-top:20px;background:var(--surface);padding:18px 20px;font:400 15px/1.75 var(--mono);color:var(--muted);overflow-x:auto;white-space:pre}
+.term .p{color:var(--green)}
+.note{margin:14px 0 0;color:var(--dim);font:400 15px/1.6 var(--mono)}
+
+/* bottom band */
+.band{margin:72px -24px 0;background:var(--surface);padding:28px 24px;display:flex;flex-direction:column;gap:8px}
+.band .tag{font:400 14px/1 var(--mono);letter-spacing:.06em;color:var(--dim)}
+.band p{margin:0;max-width:58ch}
+.band a{color:var(--blue);font:400 16px/1.6 var(--mono)}
+.band a:hover{color:var(--ink)}
+
+footer{padding:72px 24px 56px;font:400 15px/1.5 var(--mono);color:var(--dim)}
+footer .wrap{display:flex;gap:16px;justify-content:space-between;flex-wrap:wrap}
+
+@media(max-width:640px){
+  .hero h1{font-size:34px;line-height:1.1}
+  main{padding-top:48px}
+  .topbar .wrap{gap:12px}
+  .nav{gap:12px;font-size:14px;flex-wrap:wrap}
+  section+section{margin-top:32px;padding-top:32px}
+  h2{font-size:22px}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="cheatingkit home"><i aria-hidden="true"></i>cheatingkit</a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#what">what</a>
+      <a href="#use">use</a>
+      <a href="#start">start</a>
+      <a href="README.md">readme</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top" class="wrap">
+
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="kicker"><b>[ 00 ]</b> AN OUTLINE, BUILT IN PUBLIC</div>
+    <h1 id="hero-title">Reverse engineer anything.</h1>
+    <p>cheatingkit is a small service for taking a thing apart, changing its shape, and running it somewhere else. Plain words, no jargon wall.</p>
+  </section>
+
+  <section id="what" aria-labelledby="what-title">
+    <h2 id="what-title">What it is</h2>
+    <p class="lede">Most tools make the simple part complicated. This one does the opposite. You bring the thing — a game, a community, a system — and the kit gives you the pieces, what each piece does, and what it can become somewhere else.</p>
+    <div class="rows">
+      <div class="row"><span class="n">01</span><div><h3>Start with the thing</h3><p>Point at the game, the community, the system. The kit works on what you already have.</p></div></div>
+      <div class="row"><span class="n">02</span><div><h3>Say it plainly</h3><p>Hard ideas get short sentences. If a sentence needs a glossary, it gets rewritten.</p></div></div>
+      <div class="row"><span class="n">03</span><div><h3>Keep it runnable</h3><p>Every answer ends as something you can take somewhere else, not a note you archive.</p></div></div>
+    </div>
+  </section>
+
+  <section id="use" aria-labelledby="use-title">
+    <h2 id="use-title">What you can do</h2>
+    <div class="rows">
+      <div class="row"><span class="n">01</span><div><h3>Take a community apart</h3><p>See how a game or a community is put together, piece by piece, including the parts nobody wrote down.</p></div></div>
+      <div class="row"><span class="n">02</span><div><h3>Change the modality</h3><p>Move a game into a different form without losing what made it work in the first place.</p></div></div>
+      <div class="row"><span class="n">03</span><div><h3>Carry it to a custom OS</h3><p>Bring the result onto the system you actually run, not the one the docs assume you run.</p></div></div>
+      <div class="row"><span class="n">04</span><div><h3>Rewrite the complicated bit</h3><p>Feed it the dense version. Get the short version back.</p></div></div>
+    </div>
+  </section>
+
+  <section id="start" aria-labelledby="start-title">
+    <h2 id="start-title">Get started</h2>
+    <p class="lede">The site is one HTML file. No build step, no dependencies. Clone it and open it.</p>
+    <div class="term"><span class="p">$</span> git clone &lt;your-fork-url&gt; cheatingkit
+<span class="p">$</span> cd cheatingkit
+<span class="p">$</span> open index.html</div>
+    <p class="note"># &lt;your-fork-url&gt; is a placeholder until the repo has a remote.</p>
+  </section>
+
+  <div class="band">
+    <span class="tag">THE OUTLINE</span>
+    <p>Everything above, plus what is still undecided, lives in README.md.</p>
+    <a href="README.md">Read the outline &rarr;</a>
+  </div>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>cheatingkit — an outline, not a finished product.</span>
+    <span>built in public</span>
+  </div>
+</footer>
+
+</body>
+</html>
