@@ -56,19 +56,11 @@ export async function checkUpdates(config, force = false) {
   const due = !old || old.track !== track || Date.now() - Date.parse(old.checkedAt) >= (config.updates?.intervalHours || 24) * 3_600_000
   if (!force && !due) return old
   const current = installedVersion().version
-  const repository = config.updates?.repository || 'matthewdonsemail-lab/cheatingkit'
-  const releases = track === 'nightly'
-    ? await jsonAt(`https://api.github.com/repos/${repository}/releases?per_page=20`)
-    : await jsonAt(`https://api.github.com/repos/${repository}/releases/latest`)
-  const candidates = (Array.isArray(releases) ? releases : releases ? [releases] : [])
-    .map((item) => ({ version: String(item.tag_name || '').replace(/^v/, ''), url: item.html_url }))
-    .filter((item) => /^\d+\.\d+\.\d+(?:-nightly\.[^.]+\.[0-9a-f]{7})?$/.test(item.version))
-    .filter((item) => track === 'nightly' || !item.version.includes('-'))
   const tags = await jsonAt('https://registry.npmjs.org/-/package/cheatingkit/dist-tags')
-  const tag = track === 'nightly' ? tags?.next || tags?.latest : tags?.latest
-  if (tag) candidates.push({ version: tag, url: `https://www.npmjs.com/package/cheatingkit/v/${tag}` })
-  candidates.sort((a, b) => compareVersion(b.version, a.version))
-  const best = candidates[0] || null
+  const version = track === 'nightly' ? tags?.next : tags?.latest
+  const best = /^\d+\.\d+\.\d+(?:-nightly\.\d{12}\.[0-9a-f]{7})?$/.test(version || '')
+    ? { version, url: `https://www.npmjs.com/package/cheatingkit/v/${version}` }
+    : null
   const state = {
     checkedAt: new Date().toISOString(), track, status: !best ? 'unavailable' : compareVersion(best.version, current) > 0 ? 'newer' : 'current',
     current, version: best?.version || null, url: best?.url || null,

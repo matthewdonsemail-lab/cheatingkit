@@ -18,7 +18,9 @@
     "docs:check": "node scripts/maintenance/docs-sync.mjs",
     "rename:symbol": "node scripts/maintenance/rename-symbol.mjs",
     "check": "npm run naming:check && npm run docs:check && bun run test:cli && npm run build",
-    "stage:cli": "node scripts/release/stage-cli.mjs"
+    "stage:cli": "node scripts/release/stage-cli.mjs",
+    "check:package": "npm run stage:cli && npm run check:staged-package",
+    "check:staged-package": "node scripts/release/check-package.mjs"
   },
   "dependencies": {
     "@clack/prompts": "^1.9.0",

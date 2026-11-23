@@ -34,7 +34,11 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
       - run: npm ci
-      - run: bun run test:cli && npm run build
+      - run: npm run check
+      - name: Require npm publishing credentials
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: test -n "$NPM_TOKEN" || { echo 'NPM_TOKEN secret is required for nightly publication' >&2; exit 1; }
       - name: Stage incremented nightly package
         id: version
         env:
@@ -43,14 +47,12 @@ jobs:
           VERSION=$(node scripts/release/nightly-version.mjs "$SOURCE_SHA")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           node scripts/release/stage-cli.mjs "$VERSION"
-          bun .release/ck/bin/ck.js --version
+          npm run check:staged-package
       - name: Publish nightly ck to npm
-        if: env.NPM_TOKEN != ''
         run: npm publish ./.release/ck --tag next --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Create GitHub prerelease
-        if: env.NPM_TOKEN != ''
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}

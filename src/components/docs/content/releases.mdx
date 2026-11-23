@@ -4,7 +4,17 @@ CheatingKit ships the CLI as the `cheatingkit` npm package with the `ck` command
 
 ## Install ck
 
-Install [Bun](https://bun.sh/docs/installation), then run `bun add -g cheatingkit@latest` for stable or `bun add -g cheatingkit@next` for nightly. Verify with `ck --version`, then run `ck setup`. The website serves `/install.sh` and `/install.ps1`, which perform the same Bun install and version check. Set `CK_TRACK=next` to use the nightly track in those scripts.
+Install [Bun](https://bun.sh/docs/installation), then run the installer for your shell:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/matthewdonsemail-lab/cheatingkit/main/public/install.sh | sh
+```
+
+```powershell
+irm https://raw.githubusercontent.com/matthewdonsemail-lab/cheatingkit/main/public/install.ps1 | iex
+```
+
+The website also serves `/install.sh` and `/install.ps1`. Both installers resolve npm's `latest` dist-tag to an exact published version, install it with Bun, and verify `ck --version`. Set `CK_TRACK=next` for the nightly track or `CK_VERSION=X.Y.Z` for an exact version. Then run `ck setup`. Before the first npm publication, the installer reports that no release is available.
 
 The installer uses the npm registry's package integrity checks. Model files are downloaded separately to the local cache when needed; their exact revisions and file hashes are in the [model docs](/docs/models).
 
@@ -16,14 +26,14 @@ Every staged package records a four-part build number `major.minor.patch.mainCom
 
 ## Main to release
 
-The `check` workflow runs on pull requests and pushes to `main`. It installs dependencies, runs the CLI test and site build, stages the npm package, smoke-tests `ck --version`, and checks the package contents with `npm pack --dry-run`.
+The `check` workflow runs on pull requests and pushes to `main`. It installs dependencies, runs the naming and documentation checks, CLI tests, and site build, then stages the npm package, smoke-tests `ck --version`, and checks its contents with `npm pack --dry-run`. Lefthook runs the naming, documentation, whitespace, and CLI test checks before a commit and the full check plus package verification before a push.
 
 After a successful `main` check, release-please opens or updates a release PR from conventional commit messages. Merging that PR creates the stable tag and GitHub Release; the release workflow checks out that exact tag, repeats tests, stages the package, and publishes it to npm's `latest` tag. Other successful `main` pushes create a nightly version, publish it under npm's `next` tag, and create a GitHub prerelease. Release commits are excluded from the nightly path.
 
-Publication requires the repository secret `NPM_TOKEN` with permission to publish `cheatingkit`. The workflow does not silently mark an unpublished nightly as released. A GitHub Release and an npm package are two separate artifacts; the CLI checks GitHub first and uses npm dist-tags as a fallback.
+Publication requires the repository secret `NPM_TOKEN` with permission to publish `cheatingkit`. A release workflow fails clearly when the token is missing. A GitHub Release and an npm package are separate artifacts; the installer and CLI update check use npm dist-tags so they select only published versions. Until the first npm publication, neither track has a package to install.
 
 ## Updates
 
 `ck updates` checks the selected track. `ck update --track stable` or `ck update --track nightly` saves the track and reports the newest version. `ck update --apply` installs the exact reported version through Bun. The check is cached for 24 hours during normal CLI use and can be forced by the explicit update command. An unavailable network leaves the installed CLI in place.
 
-The config template points to this repository for release checks. The default track is stable. An update changes the npm package; it does not rewrite another harness's transcript. The session index stays under `~/.cheatingkit` across package updates.
+The default track is stable. An update changes the npm package; it does not rewrite another harness's transcript. The session index stays under `~/.cheatingkit` across package updates.

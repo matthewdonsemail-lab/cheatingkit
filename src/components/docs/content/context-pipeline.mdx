@@ -42,9 +42,9 @@ A generation check records source high-water mark, model identity, schema versio
 
 ## CLI and releases
 
-The installed command is `ck`: `ck setup`, `ck harnesses`, `ck index run`, `ck index status`, `ck search`, `ck context explain`, `ck models status`, and `ck update --track stable|nightly`. Bun builds the package, Effect structures service and error boundaries, and Clack presents interactive setup. The website installer verifies and installs the same artifact CI packs and tests for npm.
+The intended installed command is `ck`: `ck setup`, `ck harnesses`, `ck index run`, `ck index status`, `ck search`, `ck context explain`, `ck models status`, and `ck update --track stable|nightly`. The currently implemented commands are listed in [Getting started](/docs/getting-started). Bun runs the package, Effect structures service and error boundaries, and Clack presents interactive setup. The website installer resolves an exact published npm version and verifies the installed CLI version.
 
-A four-part display counter can express the requested `00.00.00.00` sequence. npm publication uses valid SemVer: `X.Y.Z` for stable and `X.Y.Z-nightly.N` for nightly. CI derives both from one release record so package, installer, and docs identify the same build.
+A four-part display counter expresses the requested `00.00.00.00` sequence. npm publication uses valid SemVer: `X.Y.Z` for stable and `X.Y.(Z+1)-nightly.YYYYMMDDHHmm.sha7` for nightly. CI derives the display build and package version from the staged release metadata; the installer reads npm's published dist-tag and installs that exact version.
 
 ## Acceptance checks
 

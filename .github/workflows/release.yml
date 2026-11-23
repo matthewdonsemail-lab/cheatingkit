@@ -18,6 +18,8 @@ jobs:
     env:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
+      - name: Require npm publishing credentials
+        run: test -n "$NPM_TOKEN" || { echo 'NPM_TOKEN secret is required before preparing a release' >&2; exit 1; }
       - uses: googleapis/release-please-action@v4
         id: release
         with:
@@ -37,10 +39,10 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm ci
         if: steps.release.outputs.release_created
-      - run: bun run test:cli && npm run build && npm run stage:cli && bun .release/ck/bin/ck.js --version
+      - run: npm run check && npm run check:package
         if: steps.release.outputs.release_created
       - name: Publish stable ck to npm
-        if: steps.release.outputs.release_created && env.NPM_TOKEN != ''
+        if: steps.release.outputs.release_created
         run: npm publish ./.release/ck --tag latest --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
