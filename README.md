@@ -1,45 +1,60 @@
 # CheatingKit
 
-CheatingKit indexes local Claude Code, Codex, and Hermes sessions in SQLite. The repository contains the website, documentation, and the Bun CLI that is staged as the `cheatingkit` npm package with the `ck` command.
+CheatingKit helps reverse engineering agents recover context from earlier work. Its local `ck` CLI imports Claude Code, Codex, and Hermes conversations into SQLite so you can inspect sessions, model changes, topic labels, and the lead-up to warnings or refusals. Your session index stays on your machine.
 
-## Run the current checkout
+[Quick start](#quick-start) · [What you can do](#what-you-can-do) · [Updates](#updates) · [Documentation](https://cheatingkit.com/docs)
 
-```sh
-npm ci
-npm run dev
-bun run cli setup
-bun run cli ingest
-bun run cli sessions
-bun run cli timeline
-bun run cli label
-bun run test:cli
-npm run build
-```
+## Quick start
 
-The docs start at `/docs`. The local config template is [cheatingkit.yaml](cheatingkit.yaml); setup writes `~/.cheatingkit/config.yaml` and creates `~/.cheatingkit/sessions.db`.
+Install [Bun](https://bun.sh/docs/installation), then run the installer for your shell. You do not need to clone this repository.
 
-## Install a published version
-
-Install [Bun](https://bun.sh/docs/installation), then use the version-controlled installer from this repository:
+**macOS or Linux**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/matthewdonsemail-lab/cheatingkit/main/public/install.sh | sh
+curl -fsSL https://cheatingkit.com/install.sh | sh
 ```
+
+**Windows PowerShell**
 
 ```powershell
-irm https://raw.githubusercontent.com/matthewdonsemail-lab/cheatingkit/main/public/install.ps1 | iex
+irm https://cheatingkit.com/install.ps1 | iex
 ```
 
-Both scripts resolve npm's `latest` dist-tag to an exact published version, install that version, and verify `ck --version`. Set `CK_TRACK=next` for a nightly, or `CK_VERSION=X.Y.Z` to install a specific published version. The first stable version, `cheatingkit@0.0.0`, is published on npm.
+Set up your local session index and inspect it:
 
-## Package and release
+```sh
+ck setup
+ck sessions
+ck timeline
+```
 
-`npm run check:package` stages a publishable package in `.release/ck`, verifies `ck --version`, and inspects its npm pack contents. The root package stays private to npm, so the website and its development dependencies are not shipped with the CLI.
+`ck setup` detects supported local session sources, creates `~/.cheatingkit/config.yaml` and a local SQLite database, and asks whether to import existing conversations. If local models are enabled, it can also label imported messages. Each website installer resolves npm's `latest` tag to an exact published version, installs it, and verifies `ck --version`.
 
-CI checks pushes and pull requests. After a successful push to `main`, release-please prepares a stable release PR; other successful main pushes publish nightlies. Merging the release PR creates a GitHub Release and publishes the same tagged source to npm's `latest` tag. Nightlies use npm's `next` tag and GitHub prereleases. The package must trust `release.yml` and `nightly.yml` as GitHub Actions publishers in npm's package settings. The website serves `/install.sh` and `/install.ps1` for Bun-based installation.
+## What you can do
 
-See [Releases and installation](src/components/docs/content/releases.mdx) for the version sequence and update behavior. [Local context and search](src/components/docs/content/context-pipeline.mdx) describes the intended index and local-model pipeline; [Getting started](src/components/docs/content/getting-started.mdx) distinguishes the working commands from the complete specification.
+| Command | Purpose |
+| --- | --- |
+| `ck detect` | Show which supported local session sources are present. |
+| `ck ingest` | Import new conversations into the local index. |
+| `ck sessions` | List imported sessions and their current model. |
+| `ck timeline` | Inspect recorded session events and model changes. |
+| `ck label` | Run the configured local model over imported messages. |
+| `ck areas` | Summarize labels after messages have been labeled. |
+| `ck leadups` | Inspect messages preceding recorded warnings. |
 
-## Contribution checks
+The published CLI currently provides local import, inspection, and labeling. The [documentation](https://cheatingkit.com/docs) also describes the wider context retrieval and harness integration design.
 
-`npm install` runs Lefthook's install step. Commits check CLI naming, model documentation, whitespace, and CLI tests; pushes run the full check and package verification. CLI directories, file names, values, and functions use camelCase; types and classes use PascalCase. Run `npm run docs:sync` after changing a pinned model, then `npm run check` and `npm run check:package` before pushing. The [code structure guide](src/components/docs/content/code-structure.mdx) explains the naming rules and ts-morph rename command.
+## Updates
+
+```sh
+ck updates
+ck update --apply
+```
+
+The default track is stable. You can also rerun the [website installer](https://cheatingkit.com/docs/releases) to install npm's current `latest` version. Your local configuration and database remain in place. See [Releases and installation](https://cheatingkit.com/docs/releases) for nightly and pinned versions.
+
+## Documentation
+
+- [Getting started](https://cheatingkit.com/docs/getting-started)
+- [Releases and installation](https://cheatingkit.com/docs/releases)
+- [How it works](https://cheatingkit.com/docs/how-it-works)

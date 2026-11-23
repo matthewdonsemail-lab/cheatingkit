@@ -1,19 +1,48 @@
 # Getting started
 
-This page separates the working repository commands from the complete system described elsewhere in the docs.
+Install the published `ck` command from cheatingkit.com, then index your existing local conversations. You do not need a repository checkout or a development server.
 
-## Run the site
+## Install CheatingKit
 
-From the repository root, run `npm install` and `npm run dev`, then open `http://127.0.0.1:5173/docs`. Run `npm run build` to create the static bundle.
+First, [install Bun](https://bun.sh/docs/installation). Run the installer for your shell:
 
-## CLI commands today
+**macOS or Linux**
 
-The current Bun CLI can detect Claude Code, Codex, and Hermes, create a local SQLite database, import sessions, show a timeline, and label message topics with MiniLM. Its development entry point is `bun run cli`. For example, `bun run cli setup`, `bun run cli ingest`, `bun run cli sessions`, and `bun run cli label`.
+```sh
+curl -fsSL https://cheatingkit.com/install.sh | sh
+```
 
-## System specification
+**Windows PowerShell**
 
-The documentation defines the local search, GLiNER extraction, cited context pack, and harness integrations against the contracts in [Local context and search](/docs/models/context-pipeline). Use the development commands above with this checkout.
+```powershell
+irm https://cheatingkit.com/install.ps1 | iex
+```
 
-The `ck` package staging, CI release workflows, and website installer scripts are in the repository. See [Releases and installation](/docs/releases) for the stable and nightly flow. CI publishing requires trusted publisher entries for `release.yml` and `nightly.yml` in npm's package settings; installers select a track only after npm has a package on it.
+The version controlled website installers look up npm's `latest` release, install that exact published version, and verify `ck --version`. For nightlies or a specific version, see [Releases and installation](/docs/releases).
 
-The capability directories and naming rules are documented in [Code structure](/docs/code-structure).
+## Set up local sessions
+
+```sh
+ck setup
+```
+
+Setup detects local Claude Code, Codex, and Hermes session sources. It creates `~/.cheatingkit/config.yaml` and a local SQLite database, then asks whether to import existing sessions. If local models are enabled, it can also label imported messages. Your index remains on your machine.
+
+## Inspect your history
+
+```sh
+ck sessions
+ck timeline
+ck leadups
+```
+
+`ck sessions` lists imported sessions. `ck timeline` shows recorded events and model changes. `ck leadups` shows the messages before recorded warnings. After you have labeled messages with `ck label`, use `ck areas` for a topic summary. Run `ck ingest` when you have new conversations to import.
+
+## Keep ck current
+
+```sh
+ck updates
+ck update --apply
+```
+
+You can rerun the website installer to install npm's current stable release. Updates keep your local configuration and database in place. [Releases and installation](/docs/releases) explains stable, nightly, and pinned versions.
