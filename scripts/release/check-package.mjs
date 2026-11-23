@@ -6,6 +6,9 @@ const root = resolve(import.meta.dirname, '../..')
 const target = resolve(root, '.release/ck')
 const manifest = JSON.parse(readFileSync(resolve(target, 'package.json'), 'utf8'))
 const release = JSON.parse(readFileSync(resolve(target, 'release.json'), 'utf8'))
+if (readFileSync(resolve(target, 'README.md'), 'utf8') !== readFileSync(resolve(root, 'README.md'), 'utf8')) {
+  throw new Error('Staged package README differs from the repository README')
+}
 if (manifest.name !== 'cheatingkit' || manifest.bin?.ck !== 'bin/ck.js' || release.version !== manifest.version) {
   throw new Error('Staged package and release metadata disagree')
 }

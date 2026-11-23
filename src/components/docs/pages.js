@@ -28,11 +28,11 @@ export const pages = [
   {
     slug: 'getting-started',
     title: 'Getting started',
-    description: 'Run the current project locally.',
-    sections: ['Run the site', 'CLI commands today', 'System specification'],
+    description: 'Install ck from cheatingkit.com and start using local sessions.',
+    sections: ['Install CheatingKit', 'Set up local sessions', 'Inspect your history', 'Keep ck current'],
     Content: GettingStarted,
   },
-  { slug: 'releases', title: 'Releases and installation', description: 'ck package, stable and nightly releases, and updates.', sections: ['Install ck', 'Build numbering', 'Main to release', 'Updates'], Content: Releases },
+  { slug: 'releases', title: 'Releases and installation', description: 'Install ck from the website and choose stable, nightly, or pinned versions.', sections: ['Install from the website', 'Choose a release', 'Update ck', 'How a version is published'], Content: Releases },
   { slug: 'code-structure', title: 'Code structure', description: 'Capability ownership and naming conventions.', sections: ['Naming rules', 'Ownership', 'Keeping docs in sync'], Content: CodeStructure },
   {
     slug: 'how-it-works',

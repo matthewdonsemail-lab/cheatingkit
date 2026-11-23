@@ -54,7 +54,7 @@ const run = Effect.gen(function* () {
         }
       }
     }
-    clack.outro(`Configuration: ${path}. Run 'bun run cli ingest' after new conversations.`)
+    clack.outro(`Configuration: ${path}. Run 'ck ingest' after new conversations.`)
     yield* Effect.promise(() => updateNotice(config))
     return
   }

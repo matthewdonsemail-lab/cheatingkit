@@ -1,39 +1,54 @@
 # Releases and installation
 
-CheatingKit ships the CLI as the `cheatingkit` npm package with the `ck` command. The website and CLI share this repository, but the site stays private to npm: `scripts/release/stage-cli.mjs` copies only CLI sources, its YAML template, and release metadata into `.release/ck` for publication.
+CheatingKit publishes the `ck` CLI as the [`cheatingkit` npm package](https://www.npmjs.com/package/cheatingkit). The installers on cheatingkit.com select a published version and verify the installed command.
 
-## Install ck
+## Install from the website
 
 Install [Bun](https://bun.sh/docs/installation), then run the installer for your shell:
 
+**macOS or Linux**
+
 ```sh
-curl -fsSL https://raw.githubusercontent.com/matthewdonsemail-lab/cheatingkit/main/public/install.sh | sh
+curl -fsSL https://cheatingkit.com/install.sh | sh
 ```
+
+**Windows PowerShell**
 
 ```powershell
-irm https://raw.githubusercontent.com/matthewdonsemail-lab/cheatingkit/main/public/install.ps1 | iex
+irm https://cheatingkit.com/install.ps1 | iex
 ```
 
-The website also serves `/install.sh` and `/install.ps1`. Both installers resolve npm's `latest` dist-tag to an exact published version, install it with Bun, and verify `ck --version`. Set `CK_TRACK=next` for the nightly track or `CK_VERSION=X.Y.Z` for an exact version. Then run `ck setup`. The first stable version, `cheatingkit@0.0.0`, is published on npm.
+Then run `ck setup`. The website serves the installer scripts from this repository. By default, each script resolves npm's `latest` tag to an exact version, installs `cheatingkit@<version>`, and checks `ck --version`.
 
-The installer uses the npm registry's package integrity checks. Model files are downloaded separately to the local cache when needed; their exact revisions and file hashes are in the [model docs](/docs/models).
+## Choose a release
 
-## Build numbering
+The default `latest` tag selects a stable release. To install npm's `next` nightly instead, set `CK_TRACK` before running the installer:
 
-Every staged package records a four-part build number `major.minor.patch.mainCommitCount`, for example `0.1.2.184`. This gives the requested `00.00.00.00` style counter a fourth increasing part tied to the number of commits reachable from `main`. The npm version uses valid three-part SemVer. Stable packages use `X.Y.Z`; nightlies use `X.Y.(Z+1)-nightly.YYYYMMDDHHmm.sha7`, so a nightly sorts after the current stable version and before the next stable patch.
+**macOS or Linux**
 
-`ck --version` reports both the npm version and four-part build number. The same metadata is packed in `release.json`. The staged version is generated in CI; a nightly version is never committed back to `main`.
+```sh
+curl -fsSL https://cheatingkit.com/install.sh | CK_TRACK=next sh
+```
 
-## Main to release
+**Windows PowerShell**
 
-The `check` workflow runs on pull requests and pushes to `main`. It installs dependencies, runs the naming and documentation checks, CLI tests, and site build, then stages the npm package, smoke-tests `ck --version`, and checks its contents with `npm pack --dry-run`. Lefthook runs the naming, documentation, whitespace, and CLI test checks before a commit and the full check plus package verification before a push.
+```powershell
+$env:CK_TRACK = 'next'
+irm https://cheatingkit.com/install.ps1 | iex
+Remove-Item Env:CK_TRACK
+```
 
-After a successful `main` check, release-please opens or updates a release PR from conventional commit messages. Merging that PR creates the stable tag and GitHub Release; the release workflow checks out that exact tag, repeats tests, stages the package, and publishes it to npm's `latest` tag. Other successful `main` pushes create a nightly version, publish it under npm's `next` tag, and create a GitHub prerelease. Release commits are excluded from the nightly path.
+Set `CK_VERSION` to an exact published npm version to pin an installation. Available versions are listed on [npm](https://www.npmjs.com/package/cheatingkit?activeTab=versions) and [GitHub Releases](https://github.com/matthewdonsemail-lab/cheatingkit/releases). `ck --version` prints the package version, build number, and source commit.
 
-CI publication requires trusted publisher entries for both `release.yml` and `nightly.yml` in the `cheatingkit` package's npm settings, each allowed to run `npm publish`. GitHub Actions supplies short-lived OIDC credentials. A GitHub Release and an npm package are separate artifacts; the installer and CLI update check use npm dist-tags so they select only published versions. The stable track currently has `cheatingkit@0.0.0`; the nightly track becomes available after its first successful workflow run.
+## Update ck
 
-## Updates
+```sh
+ck updates
+ck update --apply
+```
 
-`ck updates` checks the selected track. `ck update --track stable` or `ck update --track nightly` saves the track and reports the newest version. `ck update --apply` installs the exact reported version through Bun. The check is cached for 24 hours during normal CLI use and can be forced by the explicit update command. An unavailable network leaves the installed CLI in place.
+`ck updates` checks the configured release track. `ck update --apply` installs its current published version. Use `ck update --track nightly --apply` to switch to nightlies, or `ck update --track stable --apply` to return to stable releases. You can also rerun the website installer. Updates leave `~/.cheatingkit/config.yaml` and the local database in place.
 
-The default track is stable. An update changes the npm package; it does not rewrite another harness's transcript. The session index stays under `~/.cheatingkit` across package updates.
+## How a version is published
+
+The release workflow stages and checks the CLI package before npm publication. Stable releases follow the versioned release workflow and publish to npm's `latest` tag with a GitHub Release. Passing commits on `main` publish prereleases to npm's `next` tag with GitHub prereleases. The website installers read these npm tags when they run, so installation commands do not need a hardcoded version.
