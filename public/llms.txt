@@ -1,0 +1,22 @@
+# CheatingKit
+
+> CheatingKit indexes local Claude Code, Codex, and Hermes conversations so reverse engineering agents can inspect prior context, model changes, warnings, and task outcomes. The published `ck` CLI currently provides local import, inspection, and labeling; the documentation also describes planned context retrieval and harness integration.
+
+## Install and use
+
+- [Getting started](https://cheatingkit.com/docs/getting-started): Install the published CLI from cheatingkit.com, set up a local session index, and inspect it.
+- [Releases and installation](https://cheatingkit.com/docs/releases): Stable and nightly tracks, exact version pins, GitHub Releases, and updates.
+- [npm package](https://www.npmjs.com/package/cheatingkit): Published `cheatingkit` package exposing the `ck` command.
+
+## Understand CheatingKit
+
+- [Introduction](https://cheatingkit.com/docs): Product goal, observed outcomes, and research basis.
+- [How it works](https://cheatingkit.com/docs/how-it-works): Context retrieval approach and its limits.
+- [Harnesses](https://cheatingkit.com/docs/harnesses): Supported local session sources and indexing boundaries.
+- [Models](https://cheatingkit.com/docs/models): Local model roles and pinned artifacts.
+- [Local context and search](https://cheatingkit.com/docs/models/context-pipeline): Pipeline design and acceptance checks.
+- [Database design](https://cheatingkit.com/docs/database): Local SQLite source records and projections.
+
+## Source
+
+- [GitHub repository](https://github.com/matthewdonsemail-lab/cheatingkit): Source code, issues, and releases.

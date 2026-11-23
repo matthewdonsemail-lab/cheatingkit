@@ -3,7 +3,7 @@ import { products } from '../data/products.js'
 function CardMedia({ id, name, badgeText }) {
   return (
     <a
-      href="/README.md"
+      href="/docs/how-it-works"
       data-slot="media"
       data-product={id}
       aria-label={name}
@@ -29,14 +29,13 @@ function CardMedia({ id, name, badgeText }) {
         preload="auto"
         className="block h-full w-full object-cover"
       >
-        <source src="" type="video/mp4" />
+        <source type="video/mp4" />
       </video>
       <picture data-still="" className="block h-full w-full object-cover">
-        <source type="image/avif" srcSet="" sizes="(max-width: 40rem) 90vw, 342px" />
+        <source type="image/avif" sizes="(max-width: 40rem) 90vw, 342px" />
         <img
           data-slot="still"
           data-poster="true"
-          src=""
           sizes="(max-width: 40rem) 90vw, 342px"
           width="1064"
           height="1330"
@@ -58,7 +57,7 @@ function CardMedia({ id, name, badgeText }) {
         preload="none"
         className="block h-full w-full object-cover"
       >
-        <source src="" type="video/mp4" />
+        <source type="video/mp4" />
       </video>
     </a>
   )
@@ -85,14 +84,14 @@ export default function ProductTrack() {
           >
             <CardMedia id={product.id} name={product.name} badgeText={product.badge} />
             <h3 className="font-mono text-[17px] font-bold">
-              <a href="/README.md" className="font-mono text-[17px] font-bold text-[#fafafa]">
+              <a href="/docs/how-it-works" className="font-mono text-[17px] font-bold text-[#fafafa]">
                 {product.name}
               </a>
             </h3>
             <p className="font-sans text-[15px] leading-normal text-[#aeaeae]">
               {product.description}
             </p>
-            <a href="/README.md" data-component="site-button" className="mt-auto self-start font-mono">
+            <a href="/docs/how-it-works" data-component="site-button" className="mt-auto self-start font-mono">
               Read more
             </a>
           </article>
