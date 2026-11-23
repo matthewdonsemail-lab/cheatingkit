@@ -72,23 +72,18 @@ export default function ProductTrack() {
       aria-label="What CheatingKit takes apart"
       className="mx-0 box-border w-full max-w-none overflow-hidden border-t-0 px-0 pb-10 pt-6 [border-image:none]"
     >
-      <div data-component="mobile-products-heading">
-        <span>01 / CAPABILITIES</span>
-        <h2>What it takes apart.</h2>
-      </div>
       <div
         data-slot="track"
         id="products-track"
         className="flex flex-nowrap gap-5 overflow-x-auto border-0 bg-none px-0 [overscroll-behavior-inline:contain] [scroll-snap-type:x_mandatory] [scrollbar-width:none]"
       >
-        {products.map((product, index) => (
+        {products.map((product) => (
           <article
             data-component="product-card"
             key={product.id}
             className="flex min-w-0 flex-[1_0_14rem] flex-col gap-3 border-0 bg-none px-1 py-0 [scroll-snap-align:start]"
           >
             <CardMedia id={product.id} name={product.name} badgeText={product.badge} />
-            <span data-component="mobile-card-index">0{index + 1} <span aria-hidden="true">/</span> 04</span>
             <h3 className="font-mono text-[17px] font-bold">
               <a href="/README.md" className="font-mono text-[17px] font-bold text-[#fafafa]">
                 {product.name}
