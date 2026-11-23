@@ -1,0 +1,46 @@
+name: release
+
+on:
+  workflow_run:
+    workflows: [check]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - uses: actions/checkout@v4
+        if: steps.release.outputs.release_created
+        with:
+          ref: ${{ steps.release.outputs.tag_name }}
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        if: steps.release.outputs.release_created
+      - uses: actions/setup-node@v4
+        if: steps.release.outputs.release_created
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+        if: steps.release.outputs.release_created
+      - run: bun run test:cli && npm run build && npm run stage:cli && bun .release/ck/bin/ck.js --version
+        if: steps.release.outputs.release_created
+      - name: Publish stable ck to npm
+        if: steps.release.outputs.release_created && env.NPM_TOKEN != ''
+        run: npm publish ./.release/ck --tag latest --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

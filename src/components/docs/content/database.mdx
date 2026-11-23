@@ -1,0 +1,25 @@
+# Database design
+
+CheatingKit uses a local SQLite database, normally `~/.cheatingkit/sessions.db`, for source events and queryable projections from all three harnesses. `~/.cheatingkit/config.yaml` sets the database and source paths. The repository's `cheatingkit.yaml` is a configuration template.
+
+## Source and projections
+
+`sourceRecords` preserves an imported row with its harness, source path, and source position. Typed `sessions`, `messages`, `toolCalls`, and `timeline` rows make that history queryable. The import transaction writes the source row, its projections, and its cursor together. Search chunks, vectors, BM25 terms, goal candidates, and warning observations are derived from those records and can be regenerated.
+
+## Cursors and recovery
+
+`sourceCursors` tracks a complete-line byte offset for each Claude Code or Codex JSONL file and the highest imported Hermes message ID. A source cursor advances only with committed rows. A separate `indexCursors` projection tracks how far the local search and extraction pass has processed. The pass flushes its derived index generation before advancing that cursor. Stable IDs and upserts make a replay safe after interruption.
+
+If a JSONL file shrinks below its saved offset, the importer stops for that file and requires reconciliation before reusing positions.
+
+## Time and identity
+
+Harness plus session ID identifies a session. A source ID and position identify each message or call. The index stores source order and a timestamp with its quality marker; a missing timestamp cannot be used to invent exact cross-harness order. Model observations attach to the source event where they were seen.
+
+## Private data
+
+The database holds conversation text and possibly tool arguments. The website does not read it. MiniLM embeddings and GLiNER extraction run locally. Model files live outside the npm package in a pinned local cache.
+
+## Rebuild contract
+
+SQLite source rows are the durable record. Each search generation records its source high-water mark, model revision, dimensions or schema version, and artifact count. Missing or stale vector and BM25 sidecars are rebuilt from SQLite before their cursor is trusted. The [context pipeline](/docs/models/context-pipeline) specifies the indexing sequence.

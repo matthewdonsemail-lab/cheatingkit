@@ -1,6 +1,13 @@
 import { defineConfig } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
+import react from '@vitejs/plugin-react'
+import mdx from '@mdx-js/rollup'
+import remarkGfm from 'remark-gfm'
 
 export default defineConfig({
-  plugins: [tailwindcss()],
+  plugins: [
+    { enforce: 'pre', ...mdx({ remarkPlugins: [remarkGfm] }) },
+    react({ include: /\.(jsx|js|mdx|tsx|ts)$/ }),
+    tailwindcss(),
+  ],
 })

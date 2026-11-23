@@ -1,101 +1,15 @@
 <!doctype html>
 <html lang="en" dir="ltr" data-locale="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark">
-<title>cheatingkit — reverse engineer anything</title>
-<link rel="stylesheet" href="/opencode/shell.css">
-<link rel="stylesheet" href="/opencode/home.css">
-<style>
-@view-transition{navigation:auto}
-[data-site][data-page="home"] [data-component="content"] > [data-slot="page"] > [data-component="products"]{order:1}[data-site][data-page="home"] [data-component="content"] > [data-slot="page"] > :is([data-component="logo-wall"], [data-section="logos"]){order:2}[data-site][data-page="home"] [data-component="content"] > [data-slot="page"] > [data-section="what"]{order:3}[data-site][data-page="home"] [data-component="content"] > [data-slot="page"] > [data-section="getStarted"]{order:4}[data-site][data-page="home"] [data-component="content"] > [data-slot="page"] > [data-section="byos"]{order:5}[data-site][data-page="home"] [data-component="content"] > [data-slot="page"] > [data-section="tools"]{order:6}[data-site][data-page="home"] [data-component="content"] > [data-slot="page"] > :is([data-section="openSource"], [data-section="openSourceProof"]){order:7}[data-site][data-page="home"] [data-component="content"] > [data-slot="page"] > [data-section="console"]{order:8}[data-site][data-page="home"] [data-component="content"] > [data-slot="page"] > :is([data-component="logo-wall"], [data-section="logos"]) + [data-component="products"]{margin-top:3rem}[data-site][data-page="home"] [data-component="content"] > [data-slot="page"] > :is([data-component="logo-wall"], [data-section="logos"]){border-top-color:transparent;border-image:none;background-image:none}[data-site][data-spacer="dither gradient"][data-page="home"] [data-component="content"] > [data-slot="page"] > :is([data-component="logo-wall"], [data-section="logos"])::before,[data-site][data-spacer="dither gradient"][data-page="home"] [data-component="content"] > [data-slot="page"] > :is([data-component="logo-wall"], [data-section="logos"])::after{display:none}[data-site][data-page="home"] [data-component="content"] > [data-slot="page"] > [data-section="what"]{border-top-color:transparent;border-image:none;background-image:none}[data-site][data-spacer="dither gradient"][data-page="home"] [data-component="content"] > [data-slot="page"] > [data-section="what"]::before,[data-site][data-spacer="dither gradient"][data-page="home"] [data-component="content"] > [data-slot="page"] > [data-section="what"]::after{display:none}
-[data-site][data-page] [data-component="content"] { --visible: 1.15; --gaps: 1; --body-cards: 99; }
-@media (min-width: 640px) { [data-site][data-page] [data-component="content"] { --visible: 2.5; --gaps: 2; --body-cards: 99; } }
-@media (min-width: 960px) { [data-site][data-page] [data-component="content"] { --visible: 2.5; --gaps: 2; --body-cards: 99; } }
-@media (min-width: 1280px) { [data-site][data-page] [data-component="content"] { --visible: 3.5; --gaps: 3; --body-cards: 99; } }
-@media (min-width: 1600px) { [data-site][data-page] [data-component="content"] { --visible: 4; --gaps: 3; --body-cards: 99; } }
-@container (width < calc(15.60em + 24px)){[data-site] [data-component="logo-wall"] [data-slot="label"][data-fit="00a51"]>[data-slot="long"]{display:none}[data-site] [data-component="logo-wall"] [data-slot="label"][data-fit="00a51"]>[data-slot="short"]{display:inline}}
-</style>
-</head>
-<body>
-<div id="app">
-<div data-site="" data-page="home" data-theme="dark" data-spacer="line" data-logo="icon" data-hero-install="off" data-home-announcement="off" data-banner-host="" data-dark-blue="6b8fff" data-logo-size="20×25" data-menu-active="bar" data-menu-color="grey" data-button-hover="blue" data-menu-align="edge" data-nav-numbers="1" data-status-bars="4" data-logo-menu-hover="blue" data-sidebar="column" style="font-weight:400;--selection-alpha:10%;--hero-scale:1">
-
-  <header data-component="topbar">
-    <a data-slot="logo" data-variant="icon" aria-label="cheatingkit home" href="#top" class="active" link="true" aria-current="page">
-      <svg data-slot="icon" width="24" height="30" viewBox="0 0 240 300" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M180 240H60V120H180V240Z" data-slot="inner"/><path d="M180 60H60V240H180V60ZM240 300H0V0H240V300Z" data-slot="code"/></svg>
-    </a>
-    <a href="/README.md" data-component="github-link" data-owner="topbar" aria-label="Read the outline" data-on-surface="dark">
-      <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.83-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
-    </a>
-    <button type="button" data-component="menu-toggle" aria-expanded="false" aria-controls="site-menu" aria-label="Open menu"><span data-slot="line"></span><span data-slot="line"></span></button>
-  </header>
-
-  <main data-component="content" id="content" tabindex="-1">
-  <div data-slot="page">
-
-    <section data-component="hero" data-section="hero" data-variant="three-up" data-title-size="fitted" style="--title-chars:28">
-      <h1>Reverse engineer anything.</h1>
-      <p data-width="3"><span>cheatingkit is a small service for taking a thing apart, changing its shape, and running it somewhere else.</span> <span>Plain words, no jargon wall.</span></p>
-    </section>
-
-    <section data-component="block" data-section="what" data-columns="2">
-      <h2 data-slot="label">What it is</h2>
-      <div data-slot="body">
-        <p data-slot="lead">Most tools make the simple part complicated. This one does the opposite. You bring the thing — a game, a community, a system — and the kit gives you the pieces, what each piece does, and what it can become somewhere else.</p>
-        <ul id="home-features" data-component="features">
-<li><a href="#what"><strong><span>Take a community apart</span></strong><span>Games, communities, systems — see the pieces and what each one does.</span></a></li>
-<li><a href="#what"><strong><span>Change the modality</span></strong><span>Move a game into a different form without losing what made it work.</span></a></li>
-<li><a href="#what"><strong><span>Carry it to a custom OS</span></strong><span>Bring the result onto the system you actually run.</span></a></li>
-<li><a href="#what"><strong><span>Say it plainly</span></strong><span>Hard ideas get short sentences. No jargon wall.</span></a></li>
-<li><a href="#what"><strong><span>Start with the thing</span></strong><span>Point at what you already have, not at the tooling.</span></a></li>
-<li><a href="#what"><strong><span>Keep it runnable</span></strong><span>Every answer ends somewhere you can actually take it.</span></a></li>
-        </ul>
-      </div>
-    </section>
-
-    <section data-component="block" data-section="getStarted" data-style="steps" data-columns="2">
-      <h2 data-slot="label">Get started</h2>
-      <div data-slot="body">
-        <p data-slot="lead">A Vite project with inline Tailwind classes and the exact opencode.ai styling. No component framework.</p>
-        <ol data-slot="steps">
-<li><span data-slot="number" aria-hidden="true">01</span><div data-slot="text"><h3>Clone the kit</h3><p>Get the outline onto your machine.</p></div><div data-slot="action"><a data-component="site-button" href="/README.md">Read more</a></div></li>
-<li><span data-slot="number" aria-hidden="true">02</span><div data-slot="text"><h3>Run the dev server</h3><p>Vite + Tailwind, no component framework.</p></div><div data-slot="action"><a data-component="site-button" href="/README.md">Read more</a></div></li>
-<li><span data-slot="number" aria-hidden="true">03</span><div data-slot="text"><h3>Open the outline</h3><p>Everything the service is meant to do, in one file.</p></div><div data-slot="action"><a data-component="site-button" href="/README.md">Read more</a></div></li>
-        </ol>
-      </div>
-    </section>
-
-    <section data-component="block" data-section="console" data-columns="2" data-console="panel" data-console-height="compact" data-console-label="left" data-console-layout="block" style="--clearing-strength:0.65">
-      <h2 data-slot="label">The outline</h2>
-      <div data-slot="console">
-        <div data-component="console-field" data-dot="2"></div>
-        <div data-slot="copy">
-          <h2 data-slot="eyebrow">THE OUTLINE</h2>
-          <h3>Everything in one place.</h3>
-          <p>What the service is, what it should let someone do, and what is still undecided — all in README.md.</p>
-          <div data-slot="actions"><a href="/README.md" rel="external" data-component="site-button">Read the outline</a></div>
-        </div>
-      </div>
-    </section>
-
-  </div>
-  </main>
-
-  <footer data-component="site-footer" data-layout="list">
-    <div data-slot="secondary">
-      <nav data-component="secondary-nav" aria-label="Secondary"><ul>
-        <li><a href="/README.md"><span data-slot="box" aria-hidden="true">[<span data-slot="fill"></span>]</span>Outline</a></li>
-        <li><a href="https://opencode.ai" target="_blank"><span data-slot="box" aria-hidden="true">[<span data-slot="fill"></span>]</span>Design reference</a></li>
-      </ul></nav>
-      <span data-slot="copyright"><bdi dir="ltr">cheatingkit — built in public</bdi></span>
-    </div>
-    <div data-slot="main"><div data-component="wordmark">cheatingkit</div></div>
-  </footer>
-
-</div>
-</div>
-<script type="module" src="/src/main.js"></script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>cheatingkit — make your models never refuse a task</title>
+    <link rel="stylesheet" href="/opencode/shell.css" />
+    <link rel="stylesheet" href="/opencode/home.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>

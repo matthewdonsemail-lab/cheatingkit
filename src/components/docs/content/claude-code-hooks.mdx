@@ -1,0 +1,11 @@
+# Claude Code hooks
+
+Claude Code provides `SessionStart`, `UserPromptSubmit`, `PreToolUse`, and `PostToolUse` hook points through its settings. CheatingKit uses those events to keep its index current and to supply cited task context at the prompt boundary.
+
+## Event flow
+
+A session or tool event signals an incremental transcript import. The importer reads Claude Code's JSONL and commits complete records using its per-file cursor. A prompt event asks the local context service for earlier user goals and corrections in the same workspace. The service returns a bounded context pack with source message IDs and leaves the user's prompt intact.
+
+## Installation
+
+The `ck setup` design detects existing settings, adds only CheatingKit's own hook entries, and keeps a reversible record of what it installed. Each hook event has an independent ID; the transcript remains authoritative for messages and calls. [Getting started](/docs/getting-started) lists the current development commands and integration status.

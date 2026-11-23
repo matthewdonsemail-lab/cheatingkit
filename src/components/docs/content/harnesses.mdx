@@ -1,0 +1,15 @@
+# Harnesses
+
+Claude Code, Codex, and Hermes each own their session store. CheatingKit reads those stores and maps them into one local SQLite event model. The shared index and models run on the normalized records, while source-specific importers preserve the original identity and order.
+
+## Sources
+
+[Claude Code](/docs/harnesses/claude-code) and [Codex](/docs/harnesses/codex) use JSONL session files. [Hermes](/docs/harnesses/hermes) uses `state.db`. The importer opens them for reading and retains a source pointer for every normalized row.
+
+## What is indexed
+
+Sessions, user and assistant messages, tool calls and results, model observations, and source positions enter SQLite. Four-message search windows, embeddings, extracted goals, and warning lead-ups are derived from those rows. An import cursor tracks each source; a separate index cursor tracks model and search work. Neither cursor advances past uncommitted data.
+
+## Harness boundaries
+
+Each harness has a separate [hook or plugin boundary](/docs/harnesses/plugins-and-mcps). Integration events trigger reads or request a context pack; the durable transcript remains authoritative. The [context pipeline](/docs/models/context-pipeline) defines the shared processing path.

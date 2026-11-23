@@ -1,0 +1,22 @@
+# Models
+
+CheatingKit uses pinned CPU models to turn local harness history into searchable, attributable context. [MiniLM](/docs/models/minilm) supplies meaning vectors for conversation search. [GLiNER 2.5](/docs/models/gliner) extracts structured candidates from user messages. These models run locally against the user's sessions; the frontier model receives only the selected, cited context at the harness boundary.
+
+## Model roles
+
+| Model | Size of pinned files | Input | Output |
+| --- | ---: | --- | --- |
+| [MiniLM](/docs/models/minilm) | 23,685,047 bytes | Message windows and search queries | Normalized 384-dimensional vectors |
+| [GLiNER 2.5](/docs/models/gliner) | 303,915,018 bytes | User messages and nearby turns | Goal, target, constraint, and outcome candidates with source IDs |
+
+MiniLM answers *which earlier passages are similar to this request?* GLiNER answers *which parts of a passage describe the user's requested work?* BM25 adds exact keyword matching. The [context pipeline](/docs/models/context-pipeline) combines these results and resolves later corrections before supplying context to a harness.
+
+## Why local
+
+The index covers complete local sessions, including private prompts, tool calls, and results. Running extraction and retrieval on the user's CPU keeps that history on the device. Model artifacts are pinned by revision and file hash so a label or vector can be traced to the model that produced it. SQLite stores source messages and derived evidence; model-specific indexes can be rebuilt when a pin changes.
+
+## Processing example
+
+A user first asks an agent to inspect a game DLL, then later says, “Continue the crash analysis, but only cover the loader.” MiniLM retrieves the earlier DLL discussion even if the wording changed. BM25 finds exact terms such as the DLL name. GLiNER identifies “crash analysis” as the task and “only the loader” as a constraint. The context pack points to both user messages and treats the later scope correction as authoritative.
+
+See each model page for its exact revision, artifact hashes, operation, and limits. [Getting started](/docs/getting-started) distinguishes the working CLI commands from this system specification.

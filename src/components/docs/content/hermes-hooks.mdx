@@ -1,0 +1,11 @@
+# Hermes hooks
+
+Hermes has a native plugin boundary with `pre_llm_call` and tool events. CheatingKit's Hermes adapter reads `state.db` for durable session records and uses the plugin for timely context delivery.
+
+## Event flow
+
+Before a model call, the plugin sends session identity, workspace, and current user message to the local context service. The service retrieves prior user goals and corrections, then returns a bounded context pack with source message IDs. After a turn or tool event, the adapter reads new durable rows from `state.db`. Hermes message IDs make replay idempotent.
+
+## Installation
+
+The `ck setup` design installs a versioned CheatingKit plugin entry, records what it changed, and supports removal. The plugin never writes transcript rows into CheatingKit directly; it requests a read from Hermes's store. [Getting started](/docs/getting-started) lists the current development commands and integration status.

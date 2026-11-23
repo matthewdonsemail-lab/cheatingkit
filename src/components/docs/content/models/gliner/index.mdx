@@ -1,0 +1,31 @@
+# GLiNER 2.5 screening
+
+CheatingKit uses [GLiNER 2.5 Small on Hugging Face](https://huggingface.co/fastino/gliner2.5-small-v1) to identify what the user asked for inside local conversations: the goal, action, target, constraints, and expected result. It screens stored user messages and the incoming request locally so CheatingKit can compare the current task with earlier instructions. The model's download is about **303.9 MB**.
+
+## How it works
+
+A local Python worker receives user-authored message text and a task-specific extraction schema. It identifies candidate spans for the requested action, target, stated goal, constraints, and completion criteria. CheatingKit stores the candidate value, confidence, model and schema revision, and originating message ID. It screens changed messages during the same incremental index pass that builds search windows.
+
+GLiNER creates candidates; it does not decide whether the earlier goal still applies. The context resolver compares candidates with later user corrections and the current request. Warning observations come from assistant responses and model-event records, not from an unsupported claim that GLiNER predicts refusals.
+
+## Why this model
+
+The model provides structured extraction on CPU without sending full transcripts to a hosted service. Its local worker can screen the user's own history in batches. This matters because semantic similarity alone cannot tell CheatingKit which words state the target or limit the work. The task schema and labeled evaluation set cover coding-agent language, corrections, and ambiguous goals.
+
+## Exact use example
+
+For “Inspect `loader.dll` for the startup crash; do not change the binary,” the worker records a candidate action of *inspect*, target of *loader.dll startup crash*, and constraint of *do not change the binary*, all linked to that user message. If the user later says, “Actually, patch the loader,” the later message is retained as a correction. Retrieval shows both sources and applies the newer instruction when building context.
+
+## Pinned files
+
+The model ID is `fastino/gliner2.5-small-v1`; the revision is `b5d42bf7dc7d01c40304ae4ed43c2f13c325a75b`. The files total 303,915,018 bytes. These details identify the exact artifacts used by CheatingKit.
+
+| File | Bytes | Verification |
+| --- | ---: | --- |
+| `config.json` | 4,104 | Git blob SHA-1 `cfd76c9f59461050dd1c00ac0b670eaac7d1495d` |
+| `encoder_config/config.json` | 856 | Git blob SHA-1 `cdaf6bb43684ee0c7623598df371099ed8b453e6` |
+| `model.safetensors` | 295,567,700 | SHA-256 `4ee982787ace270d4bf15dbcb28ced38e0aa201372347114ceedd6336055de2b` |
+| `tokenizer.json` | 8,341,713 | Git blob SHA-1 `a93077b30f99647415b09c3534fed78681ffc853` |
+| `tokenizer_config.json` | 645 | Git blob SHA-1 `5efd586306801b08ca13390b0619a94c943046e4` |
+
+The model cache lives outside the CLI package. Each extracted row records this pin and its extraction-schema version. Changing either causes re-extraction from SQLite source messages. [Getting started](/docs/getting-started) records which commands are available in the working CLI.

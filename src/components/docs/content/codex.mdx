@@ -1,0 +1,15 @@
+# Codex
+
+Codex session JSONL files under `~/.codex/sessions` contain response messages, function and custom tool calls, tool outputs, session metadata, and turn context. CheatingKit maps these to the common session, message, call, and model-event schema.
+
+## Import
+
+A per-file byte cursor advances after a complete JSONL line. Source rows and typed projections are committed together. A call ID links a tool invocation to its result. Files remain owned by Codex.
+
+## Integration
+
+The [Codex hook design](/docs/harnesses/codex/hooks) defines the live event boundary for incremental import and context requests. The local search and extraction stages use normalized records, not a second copy written by the hook.
+
+## Model changes
+
+A turn-context model is compared with the previous observed model in that session. The timeline records a switch at its source event; it does not invent a model for messages where Codex did not record one.

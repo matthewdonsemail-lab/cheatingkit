@@ -1,0 +1,15 @@
+pre-commit:
+  jobs:
+    - name: whitespace
+      run: git diff --cached --check
+    - name: naming
+      run: npm run naming:check
+    - name: documentation
+      run: npm run docs:check
+    - name: cli-tests
+      run: bun run test:cli
+
+pre-push:
+  jobs:
+    - name: build
+      run: npm run build

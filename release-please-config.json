@@ -1,0 +1,10 @@
+{
+  "release-type": "node",
+  "packages": {
+    ".": {
+      "component": "ck",
+      "package-name": "cheatingkit",
+      "include-component-in-tag": false
+    }
+  }
+}

@@ -1,0 +1,30 @@
+# MiniLM embeddings
+
+CheatingKit uses [MiniLM on Hugging Face](https://huggingface.co/Xenova/all-MiniLM-L6-v2) to find earlier conversation passages that express the same task in different words. It embeds the user's current request and indexed session history locally, then returns source-linked matches for the context resolver. The model's download is about **23.7 MB**.
+
+## How it works
+
+The Transformers.js worker loads the quantized ONNX model on CPU. It tokenizes text, mean-pools the model output, and normalizes the resulting 384-dimensional vector. The index embeds ordered four-message windows with one-message overlap; query text is embedded in the same space. Cosine search returns similar windows even when the query uses different words. BM25 supplies the separate exact-term list, and reciprocal rank fusion combines the two lists.
+
+MiniLM measures semantic proximity. It does not know which user instruction is authoritative, whether a task is complete, or why an assistant issued a warning. Source IDs and later user corrections are checked after retrieval.
+
+## Why this model
+
+Its small quantized artifact makes CPU indexing and query embedding practical without a GPU. This is important when CheatingKit must search many private sessions before a harness sends the next model call. The same model supports topic labeling, while search keeps a distinct index generation so topic labels are not confused with search matches.
+
+## Exact use example
+
+An earlier user message says, “Find why the loader crashes when this DLL initializes.” A later message says, “Go back to the startup failure.” MiniLM embeds the later query and retrieves the earlier four-message window despite the wording change. The result includes the session and message IDs. The context resolver then checks for any newer user correction before presenting that window as relevant history.
+
+## Pinned files
+
+The model ID is `Xenova/all-MiniLM-L6-v2`; the revision is `751bff37182d3f1213fa05d7196b954e230abad9`. The files total 23,685,047 bytes. These details identify the exact artifacts used by CheatingKit.
+
+| File | Bytes | Verification |
+| --- | ---: | --- |
+| `config.json` | 650 | Git blob SHA-1 `72147e4ff4426ebedbfa2146c4a0999def51a313` |
+| `tokenizer.json` | 711,661 | Git blob SHA-1 `c17ed520ed8438736732a54957a69306b8822215` |
+| `tokenizer_config.json` | 366 | Git blob SHA-1 `37fca74771bc76a8e01178ce3a6055a0995f8093` |
+| `onnx/model_quantized.onnx` | 22,972,370 | SHA-256 `afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1` |
+
+The model cache lives outside the CLI package. Each vector index generation records this revision and its dimensions. A changed revision or dimension triggers a rebuild from SQLite messages. The current CheatingKit CLI already pins this model for topic labeling; the [search pass](/docs/models/context-pipeline) uses the same pin for the unified conversation index.

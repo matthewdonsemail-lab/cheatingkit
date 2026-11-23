@@ -1,0 +1,11 @@
+# Codex hooks
+
+Codex session files are the durable source of messages and tool calls. CheatingKit uses the supported Codex event boundary for timely import and context requests, while its indexer reads the session JSONL.
+
+## Event flow
+
+A prompt or session event identifies the current session and workspace. CheatingKit imports completed source rows, searches earlier user goals with [MiniLM and GLiNER](/docs/models), and returns a compact, cited context pack. Tool events request another incremental read; a call ID connects a call with its output. Hook retries cannot create a second message because source IDs deduplicate the import.
+
+## Installation
+
+The `ck setup` design records its own configuration entries and allows their removal without disturbing other hooks or MCP servers. It checks which event and context-output surfaces the installed Codex version exposes before enabling that integration. [Getting started](/docs/getting-started) lists the current development commands and integration status.

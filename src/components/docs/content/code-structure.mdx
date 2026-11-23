@@ -1,0 +1,21 @@
+# Code structure
+
+CheatingKit groups CLI code by the capability that owns it. `src/cli/index.ts` dispatches commands; behavior belongs in `config/`, `harnesses/`, `models/`, `search/`, `storage/`, `mcp/`, and `updates/`. A capability keeps its own `constants`, `types`, `helpers`, and tests beside the code that uses them. Shared code moves out only when two capabilities have the same contract.
+
+## Naming rules
+
+Directories and file names use camelCase when they contain multiple words, such as `claudeCode/` or `sessionCursor.js`. Variables, functions, object keys, and exported constants use camelCase. Type and interface names, React components, and classes use PascalCase. This keeps TypeScript types visually distinct from values while retaining one convention for runtime identifiers.
+
+## Ownership
+
+The model manifest lives in `models/constants.js`; download verification lives in `models/helpers/verify.js`. Session detection and ingestion live in `harnesses/`. Search indexing and retrieval live in `search/`, while SQLite schema and connection management live in `storage/`. MCP exposes these capabilities through `mcp/server.js` rather than implementing a second index.
+
+When a new harness adapter is added, its parser, hooks, constants, types, and tests belong under that harness's own directory. Likewise, model-specific inference and asset metadata belong under that model's directory once the implementations diverge. Avoid a repository-wide `utils/` or `helpers/` directory: the owner of a helper should be clear from its path.
+
+## Keeping docs in sync
+
+The model manifest in `src/cli/models/constants.js` is the source for each model page's **Pinned files** section. Run `npm run docs:sync` after changing a model ID, revision, file size, or hash. The sync script uses ts-morph to read the manifest, then rewrites those sections. `npm run docs:check` fails if a section is stale, a model lacks a page or route, the model overview has the wrong total, the configured MiniLM pin differs, or an internal docs link points to a missing route.
+
+Use `npm run rename:symbol -- path/to/file.js oldName newName` to rename a declared symbol. ts-morph updates code references and imports; the command also updates exact backticked mentions in the MDX docs and README. Review ordinary prose and dynamic references after a rename. A prose sentence cannot be safely rewritten from a code symbol alone.
+
+Lefthook runs the naming check, docs check, whitespace check, and CLI tests before a commit. It runs the site build before a push. `npm run check` runs the naming and docs checks, CLI tests, and site build together. CI repeats the checks, so a local hook bypass still cannot pass the repository check. Run `npm run prepare` if Git hooks were not installed by `npm install`.

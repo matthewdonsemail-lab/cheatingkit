@@ -1,0 +1,15 @@
+# Hermes
+
+Hermes stores durable sessions and messages in `~/.hermes/state.db`. CheatingKit opens this SQLite database read-only and maps its sessions, messages, calls, and results into its own index.
+
+## Import
+
+The Hermes adapter uses the highest imported message ID as its cursor. It records the source identity and projection in a local transaction, without writing to Hermes's database. A configured Hermes home can point the adapter to another `state.db`.
+
+## Integration
+
+The [Hermes plugin design](/docs/harnesses/hermes/hooks) uses the native pre-call and tool-event boundary to request context or trigger an incremental read. Hermes's durable message ID remains the deduplication key.
+
+## Model changes
+
+A Hermes session exposes its current model. The timeline records the first observed value and later observed changes. A current session value cannot establish which model produced every older message, so that history remains unknown unless a source event supplies it.

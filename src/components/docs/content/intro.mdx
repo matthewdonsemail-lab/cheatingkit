@@ -1,0 +1,24 @@
+# Introduction
+
+CheatingKit analyzes local conversations from Claude Code, Codex, and Hermes to understand what a user asked, how the request was phrased, and what happened next. Its central question is whether a current request resembles an earlier task that stalled, received a warning or refusal, or continued under a different model. It also looks for earlier wording of the same goal that led to useful progress. The purpose is to make that history available at the next harness call, with the original messages and outcomes attached.
+
+## The problem
+
+A task can be legitimate and still be misunderstood from a short or ambiguous prompt. A user may ask for reverse engineering or security analysis, receive a warning, and then get useful work done in another session after explaining the same goal differently. The new session loses the earlier attempt and its result unless those conversations are searched together. Research on [exaggerated safety responses](https://arxiv.org/abs/2308.01263) and [prompt sensitivity](https://arxiv.org/abs/2410.02185) shows why wording and context deserve separate analysis.
+
+Claude Code also has a concrete model-switch case: Anthropic says its cybersecurity classifiers can flag certain requests on Opus 5 or 5.5 and fall back to Opus 4.8. A fallback is an observed outcome, not proof that CheatingKit can see the classifier's internal label or determine the exact cause from a transcript alone. [Anthropic's explanation](https://support.claude.com/en/articles/16049681-why-claude-switched-models-in-your-conversation-with-opus-5-or-opus-5-5) describes both the fallback and the kinds of content the checks inspect.
+
+## What CheatingKit does
+
+CheatingKit imports durable sessions, messages, tool calls, and known model changes into a local SQLite corpus. It links each observed warning, refusal, fallback, or unfinished task to the preceding request and its source IDs. [MiniLM](/docs/models/minilm) and keyword search retrieve similar wording and concepts across sessions; [GLiNER 2.5](/docs/models/gliner) is the planned structured extraction layer for goals, targets, and constraints. Results include both attempts that progressed and attempts that stalled, so similarity alone is never treated as evidence that a request succeeded.
+
+At a supported pre-call hook, CheatingKit searches that corpus for the current request, follows later user corrections, and prepares a bounded context pack. It can show the user's stated goal, relevant prior wording, observed outcomes, and uncertainty with links to source messages. The harness receives that context alongside the user's request. This helps the next model understand the actual task and what was already tried; a warning prediction is a local estimate based on past observations, not a guarantee about a provider's decision.
+
+## Research basis
+
+- [XSTest](https://arxiv.org/abs/2308.01263) evaluates false refusals of safe prompts that resemble unsafe ones.
+- [POSIX](https://arxiv.org/abs/2410.02185) measures how changes in wording and prompt format affect model output.
+- [Learning Contextual Retrieval for Robust Conversational Search](https://arxiv.org/abs/2509.19700) studies retrieval that accounts for intent across conversation turns.
+- [Beyond Over-Refusal](https://arxiv.org/abs/2510.08158) examines false refusals in single-turn and multi-turn scenarios, including the effect of phrasing on safe requests.
+
+These papers motivate measuring prompt sensitivity and retrieving the full task context. They do not establish that any particular CheatingKit prompt will avoid a warning or that a model switch was caused by one phrase. [How it works](/docs/how-it-works) describes the data flow; [Getting started](/docs/getting-started) identifies what the working CLI currently implements.

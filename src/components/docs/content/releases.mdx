@@ -1,0 +1,29 @@
+# Releases and installation
+
+CheatingKit ships the CLI as the `cheatingkit` npm package with the `ck` command. The website and CLI share this repository, but the site stays private to npm: `scripts/release/stage-cli.mjs` copies only CLI sources, its YAML template, and release metadata into `.release/ck` for publication.
+
+## Install ck
+
+Install [Bun](https://bun.sh/docs/installation), then run `bun add -g cheatingkit@latest` for stable or `bun add -g cheatingkit@next` for nightly. Verify with `ck --version`, then run `ck setup`. The website serves `/install.sh` and `/install.ps1`, which perform the same Bun install and version check. Set `CK_TRACK=next` to use the nightly track in those scripts.
+
+The installer uses the npm registry's package integrity checks. Model files are downloaded separately to the local cache when needed; their exact revisions and file hashes are in the [model docs](/docs/models).
+
+## Build numbering
+
+Every staged package records a four-part build number `major.minor.patch.mainCommitCount`, for example `0.1.2.184`. This gives the requested `00.00.00.00` style counter a fourth increasing part tied to the number of commits reachable from `main`. The npm version uses valid three-part SemVer. Stable packages use `X.Y.Z`; nightlies use `X.Y.(Z+1)-nightly.YYYYMMDDHHmm.sha7`, so a nightly sorts after the current stable version and before the next stable patch.
+
+`ck --version` reports both the npm version and four-part build number. The same metadata is packed in `release.json`. The staged version is generated in CI; a nightly version is never committed back to `main`.
+
+## Main to release
+
+The `check` workflow runs on pull requests and pushes to `main`. It installs dependencies, runs the CLI test and site build, stages the npm package, smoke-tests `ck --version`, and checks the package contents with `npm pack --dry-run`.
+
+After a successful `main` check, release-please opens or updates a release PR from conventional commit messages. Merging that PR creates the stable tag and GitHub Release; the release workflow checks out that exact tag, repeats tests, stages the package, and publishes it to npm's `latest` tag. Other successful `main` pushes create a nightly version, publish it under npm's `next` tag, and create a GitHub prerelease. Release commits are excluded from the nightly path.
+
+Publication requires the repository secret `NPM_TOKEN` with permission to publish `cheatingkit`. The workflow does not silently mark an unpublished nightly as released. A GitHub Release and an npm package are two separate artifacts; the CLI checks GitHub first and uses npm dist-tags as a fallback.
+
+## Updates
+
+`ck updates` checks the selected track. `ck update --track stable` or `ck update --track nightly` saves the track and reports the newest version. `ck update --apply` installs the exact reported version through Bun. The check is cached for 24 hours during normal CLI use and can be forced by the explicit update command. An unavailable network leaves the installed CLI in place.
+
+The config template points to this repository for release checks. The default track is stable. An update changes the npm package; it does not rewrite another harness's transcript. The session index stays under `~/.cheatingkit` across package updates.

@@ -1,0 +1,17 @@
+# How it works
+
+CheatingKit reconstructs a task from the user's own local conversation history. The flow has five parts: capture, normalize, index, retrieve, and supply cited context.
+
+## The context problem
+
+A task may span multiple sessions and harnesses. A later prompt such as “continue the loader issue” does not restate the original target, earlier findings, or a correction that narrowed the work. A model switch or a warning response can also interrupt the apparent continuity of the session. The system therefore preserves the event sequence instead of treating the latest message as the entire task.
+
+## The approach
+
+1. Import Claude Code and Codex JSONL and Hermes SQLite messages into a common schema, retaining source IDs, tool calls, models, and ordering.
+2. Use [MiniLM](/docs/models/minilm) and BM25 to index overlapping conversation windows. Use [GLiNER 2.5](/docs/models/gliner) to extract candidate goals, targets, constraints, and completion criteria from user messages.
+3. Search when a new request arrives, then compare retrieved statements with later user corrections. Assistant and tool text can provide evidence but cannot supersede a user's instruction.
+4. Build a bounded context pack containing the selected source passages, message IDs, and uncertainty. A harness integration passes that context alongside the unchanged user request.
+5. Record warning and model-switch observations against the same timeline so the user can inspect what happened.
+
+For the exact cursor, index, and recovery design, see [Local context and search](/docs/models/context-pipeline).

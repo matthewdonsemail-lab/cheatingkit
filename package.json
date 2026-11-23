@@ -1,16 +1,42 @@
 {
   "name": "cheatingkit",
   "private": true,
+  "bin": {
+    "cheatingkit": "src/cli/index.ts"
+  },
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "prepare": "lefthook install",
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "cli": "bun src/cli/index.ts",
+    "test:cli": "bun test src/cli",
+    "naming:check": "node scripts/maintenance/naming-check.mjs",
+    "docs:sync": "node scripts/maintenance/docs-sync.mjs --write",
+    "docs:check": "node scripts/maintenance/docs-sync.mjs",
+    "rename:symbol": "node scripts/maintenance/rename-symbol.mjs",
+    "check": "npm run naming:check && npm run docs:check && bun run test:cli && npm run build",
+    "stage:cli": "node scripts/release/stage-cli.mjs"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.9.0",
+    "@huggingface/transformers": "^4.3.2",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "effect": "^4.1.5",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
+    "@mdx-js/rollup": "^3.1.1",
     "@tailwindcss/vite": "^4.1.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "lefthook": "^2.2.2",
+    "remark-gfm": "^4.0.1",
     "tailwindcss": "^4.1.0",
+    "ts-morph": "^28.0.0",
     "vite": "^7.0.0"
   }
 }

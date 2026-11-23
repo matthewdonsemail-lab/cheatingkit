@@ -1,0 +1,15 @@
+# Claude Code
+
+Claude Code project transcripts are JSONL files under `~/.claude/projects`. CheatingKit's Claude Code adapter reads user and assistant messages, tool use and results, session identity, timestamps, and model names.
+
+## Import
+
+The adapter stores each source row and its typed projection in SQLite. Its cursor is a byte offset per file and advances only past complete newline-terminated records. Re-importing the same range uses stable source keys to avoid duplicates.
+
+## Integration
+
+The [Claude Code hook design](/docs/harnesses/claude-code/hooks) uses supported session and prompt events to request incremental indexing and cited context. Transcript rows remain the source of truth; hook event IDs are recorded separately so retries do not duplicate messages.
+
+## Related
+
+All three adapters produce the same normalized event shape described in [Database design](/docs/database). The [local models](/docs/models) consume that shape rather than parsing Claude Code JSONL directly.

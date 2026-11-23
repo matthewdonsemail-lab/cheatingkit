@@ -1,0 +1,19 @@
+# Plugins and MCPs
+
+The three harnesses expose different extension surfaces. CheatingKit keeps one local context and index service, with a small source-specific adapter for each harness.
+
+## Claude Code
+
+Claude Code hooks provide session, prompt, and tool events. The adapter reads project JSONL for durable content and returns source-linked context at the prompt boundary. See [Claude Code hooks](/docs/harnesses/claude-code/hooks).
+
+## Codex
+
+Codex session JSONL supplies messages, turn context, and call IDs. Its supported event surface can trigger an incremental import and context request. MCP configuration is separate from the session import. See [Codex hooks](/docs/harnesses/codex/hooks).
+
+## Hermes
+
+A native Hermes plugin can use `pre_llm_call` and tool events. The importer reads `state.db` read-only. See [Hermes hooks](/docs/harnesses/hermes/hooks).
+
+## Indexing rule
+
+The importer records observed tool and server names when they occur in source events. It does not infer the complete set of installed plugins or copy MCP credentials. A tool result may inform search, but it cannot replace a user-authored instruction when resolving the goal.
