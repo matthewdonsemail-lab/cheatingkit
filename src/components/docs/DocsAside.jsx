@@ -4,9 +4,13 @@ import { docsHref, headingId, pages } from './pages.js'
 export default function DocsAside({ page }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const shortcut = /Mac/.test(navigator.platform) ? '⌘K' : 'Ctrl K'
+  const [shortcut, setShortcut] = useState('Ctrl K')
   const searchRef = useRef(null)
   const results = pages.filter((item) => `${item.title} ${item.description}`.toLowerCase().includes(query.toLowerCase()))
+
+  useEffect(() => {
+    if (/Mac/.test(navigator.platform)) setShortcut('⌘K')
+  }, [])
 
   useEffect(() => {
     function onKeyDown(event) {

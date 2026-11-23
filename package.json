@@ -9,7 +9,7 @@
   "scripts": {
     "prepare": "lefthook install",
     "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
+    "build": "vite build && node scripts/maintenance/prerender-site.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "cli": "bun src/cli/index.ts",
     "test:cli": "bun test src/cli",
