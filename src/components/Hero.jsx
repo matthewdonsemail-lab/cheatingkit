@@ -7,7 +7,6 @@ export default function Hero() {
       data-title-size="fitted"
       className="visible mx-0 box-border w-full max-w-none border-t-0 px-0 pt-14 [border-image:none] [--title-chars:23]"
     >
-      <span data-component="mobile-eyebrow" className="font-mono">OPEN SOURCE / REVERSE ENGINEERING</span>
       <h1 className="font-mono">
         Make your model
         <br />
