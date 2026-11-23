@@ -1,9 +1,16 @@
+import { useState } from 'react'
+
 export default function Topbar() {
+  const [menuOpen, setMenuOpen] = useState(false)
+
   return (
     <header
       data-component="topbar"
       className="sticky top-0 z-30 ml-[var(--rail-w)] visible flex min-h-14 box-border items-center justify-between bg-transparent px-[var(--page-pad)]"
     >
+      <a href="/" data-component="mobile-wordmark" className="font-mono text-[#fafafa]">
+        cheatingkit<span aria-hidden="true">_</span>
+      </a>
       <a
         href="https://github.com/matthewdonsemail-lab/cheatingkit"
         data-component="github-link"
@@ -19,14 +26,20 @@ export default function Topbar() {
       <button
         type="button"
         data-component="menu-toggle"
-        aria-expanded="false"
+        aria-expanded={menuOpen}
         aria-controls="site-menu"
-        aria-label="Open menu"
+        aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+        onClick={() => setMenuOpen((open) => !open)}
         className="hidden"
       >
         <span data-slot="line"></span>
         <span data-slot="line"></span>
       </button>
+      <nav id="site-menu" data-component="mobile-menu" aria-label="Mobile navigation" hidden={!menuOpen}>
+        <a href="/docs">Docs <span aria-hidden="true">↗</span></a>
+        <a href="/" aria-current="page" onClick={() => setMenuOpen(false)}>CheatingKit</a>
+        <a href="#faq" onClick={() => setMenuOpen(false)}>FAQ</a>
+      </nav>
     </header>
   )
 }
