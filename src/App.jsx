@@ -1,5 +1,5 @@
 import Topbar from './components/Topbar.jsx'
-import HireBanner from './components/HireBanner.jsx'
+import CallToAction from './components/CallToAction.jsx'
 import Hero from './components/Hero.jsx'
 import ProductTrack from './components/ProductTrack.jsx'
 import MoreTools from './components/MoreTools.jsx'
@@ -43,9 +43,9 @@ export default function App() {
         className="ml-[var(--rail-w)] box-border min-w-0 px-[var(--page-pad)] [--visible:4] [--gaps:3] [--body-cards:99]"
       >
         <div data-slot="page">
-          <HireBanner />
           <Hero />
           <ProductTrack />
+          <CallToAction />
           <hr className="my-0 block h-px w-full border-0 bg-[#242424]" />
           <MoreTools />
           <hr className="my-0 block h-px w-full border-0 bg-[#242424]" />
