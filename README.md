@@ -30,13 +30,13 @@ curl -fsSL https://raw.githubusercontent.com/matthewdonsemail-lab/cheatingkit/ma
 irm https://raw.githubusercontent.com/matthewdonsemail-lab/cheatingkit/main/public/install.ps1 | iex
 ```
 
-Both scripts resolve npm's `latest` dist-tag to an exact published version, install that version, and verify `ck --version`. Set `CK_TRACK=next` for a nightly, or `CK_VERSION=X.Y.Z` to install a specific published version. No package is available until the first npm publication.
+Both scripts resolve npm's `latest` dist-tag to an exact published version, install that version, and verify `ck --version`. Set `CK_TRACK=next` for a nightly, or `CK_VERSION=X.Y.Z` to install a specific published version. The first stable version, `cheatingkit@0.0.0`, is published on npm.
 
 ## Package and release
 
 `npm run check:package` stages a publishable package in `.release/ck`, verifies `ck --version`, and inspects its npm pack contents. The root package stays private to npm, so the website and its development dependencies are not shipped with the CLI.
 
-CI checks pushes and pull requests. After a successful push to `main`, release-please prepares a stable release PR; other successful main pushes publish nightlies. Merging the release PR creates a GitHub Release and publishes the same tagged source to npm's `latest` tag. Nightlies use npm's `next` tag and GitHub prereleases. The workflows require an `NPM_TOKEN` repository secret with permission to publish `cheatingkit`. The website serves `/install.sh` and `/install.ps1` for Bun-based installation.
+CI checks pushes and pull requests. After a successful push to `main`, release-please prepares a stable release PR; other successful main pushes publish nightlies. Merging the release PR creates a GitHub Release and publishes the same tagged source to npm's `latest` tag. Nightlies use npm's `next` tag and GitHub prereleases. The package must trust `release.yml` and `nightly.yml` as GitHub Actions publishers in npm's package settings. The website serves `/install.sh` and `/install.ps1` for Bun-based installation.
 
 See [Releases and installation](src/components/docs/content/releases.mdx) for the version sequence and update behavior. [Local context and search](src/components/docs/content/context-pipeline.mdx) describes the intended index and local-model pipeline; [Getting started](src/components/docs/content/getting-started.mdx) distinguishes the working commands from the complete specification.
 

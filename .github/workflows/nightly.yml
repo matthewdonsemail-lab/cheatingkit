@@ -21,8 +21,6 @@ jobs:
       github.event.workflow_run.event == 'push' &&
       !startsWith(github.event.workflow_run.head_commit.message, 'chore(main): release')
     runs-on: ubuntu-latest
-    env:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,12 +31,9 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      - run: npm install --global npm@^11.17.0
       - run: npm ci
       - run: npm run check
-      - name: Require npm publishing credentials
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: test -n "$NPM_TOKEN" || { echo 'NPM_TOKEN secret is required for nightly publication' >&2; exit 1; }
       - name: Stage incremented nightly package
         id: version
         env:
@@ -50,8 +45,6 @@ jobs:
           npm run check:staged-package
       - name: Publish nightly ck to npm
         run: npm publish ./.release/ck --tag next --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Create GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}

@@ -14,7 +14,7 @@ curl -fsSL https://raw.githubusercontent.com/matthewdonsemail-lab/cheatingkit/ma
 irm https://raw.githubusercontent.com/matthewdonsemail-lab/cheatingkit/main/public/install.ps1 | iex
 ```
 
-The website also serves `/install.sh` and `/install.ps1`. Both installers resolve npm's `latest` dist-tag to an exact published version, install it with Bun, and verify `ck --version`. Set `CK_TRACK=next` for the nightly track or `CK_VERSION=X.Y.Z` for an exact version. Then run `ck setup`. Before the first npm publication, the installer reports that no release is available.
+The website also serves `/install.sh` and `/install.ps1`. Both installers resolve npm's `latest` dist-tag to an exact published version, install it with Bun, and verify `ck --version`. Set `CK_TRACK=next` for the nightly track or `CK_VERSION=X.Y.Z` for an exact version. Then run `ck setup`. The first stable version, `cheatingkit@0.0.0`, is published on npm.
 
 The installer uses the npm registry's package integrity checks. Model files are downloaded separately to the local cache when needed; their exact revisions and file hashes are in the [model docs](/docs/models).
 
@@ -30,7 +30,7 @@ The `check` workflow runs on pull requests and pushes to `main`. It installs dep
 
 After a successful `main` check, release-please opens or updates a release PR from conventional commit messages. Merging that PR creates the stable tag and GitHub Release; the release workflow checks out that exact tag, repeats tests, stages the package, and publishes it to npm's `latest` tag. Other successful `main` pushes create a nightly version, publish it under npm's `next` tag, and create a GitHub prerelease. Release commits are excluded from the nightly path.
 
-Publication requires the repository secret `NPM_TOKEN` with permission to publish `cheatingkit`. A release workflow fails clearly when the token is missing. A GitHub Release and an npm package are separate artifacts; the installer and CLI update check use npm dist-tags so they select only published versions. Until the first npm publication, neither track has a package to install.
+CI publication requires trusted publisher entries for both `release.yml` and `nightly.yml` in the `cheatingkit` package's npm settings, each allowed to run `npm publish`. GitHub Actions supplies short-lived OIDC credentials. A GitHub Release and an npm package are separate artifacts; the installer and CLI update check use npm dist-tags so they select only published versions. The stable track currently has `cheatingkit@0.0.0`; the nightly track becomes available after its first successful workflow run.
 
 ## Updates
 
