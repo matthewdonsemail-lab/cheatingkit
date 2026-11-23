@@ -33,28 +33,19 @@ export default function MoreTools() {
           {tools.map(({ name, description, href }) => (
             <li
               key={name}
-              className="grid list-none grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-4 border-l-2 border-transparent p-3 hover:border-[#6b6b6b] hover:bg-[#1a1a1a] focus-within:border-[#6b6b6b]"
+              className="grid list-none grid-cols-[48px_minmax(0,1fr)] items-center gap-4 border-l-2 border-transparent p-3 hover:border-[#6b6b6b] hover:bg-[#1a1a1a] focus-within:border-[#6b6b6b]"
             >
               <span data-slot="icon" data-mark="" aria-hidden="true" className="grid h-12 w-12 place-items-center border border-[#2a2a2a] bg-[#1f1f1f]">
                 <img src="/listeningkit-logo.svg" width="24" height="24" alt="" aria-hidden="true" className="block h-6 w-6" />
               </span>
               <span data-slot="text" className="flex flex-col gap-0.5">
-                <span data-slot="name" className="font-mono text-[0.9375rem] text-[#fafafa]">
+                <a href={href} data-slot="name" className="font-mono text-[0.9375rem] text-[#fafafa]">
                   {name}
-                </span>
+                </a>
                 <span data-slot="description" className="font-sans text-sm leading-normal text-[#aeaeae]">
                   {description}
                 </span>
               </span>
-              <a
-                href={href}
-                data-component="site-button"
-                data-slot="get"
-                data-variant="neutral"
-                aria-label={`Learn more about ${name}`}
-              >
-                Learn more
-              </a>
             </li>
           ))}
         </ul>

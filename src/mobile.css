@@ -1,7 +1,6 @@
 /* The borrowed desktop shell keeps its rail visible below its own breakpoint.
    Give the homepage a dedicated phone and small tablet layout. */
 [data-component="mobile-wordmark"],
-[data-component="mobile-eyebrow"],
 [data-component="mobile-menu"] {
   display: none;
 }
@@ -130,15 +129,6 @@
     padding: 3.5rem 0 2.5rem;
   }
 
-  #root [data-component="mobile-eyebrow"] {
-    display: block;
-    margin-bottom: 1.25rem;
-    color: #54d483;
-    font-size: .6875rem;
-    line-height: 1.4;
-    letter-spacing: .09em;
-  }
-
   #root [data-component="hero"] h1 {
     max-width: 12ch;
     margin: 0;
@@ -206,7 +196,6 @@
   }
 
   #root [data-section="more-products"] [data-slot="icon"] { width: 2.5rem; height: 2.5rem; }
-  #root [data-section="more-products"] [data-slot="get"] { grid-column: 2; justify-self: start; }
   #root [data-section="faq"] > div { width: 100%; }
   #root [data-section="faq"] > div > div { border-top: 1px solid #303030; }
   #root [data-section="faq"] button { min-height: 2.5rem; }
