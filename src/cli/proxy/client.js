@@ -86,7 +86,7 @@ function route(args) {
   if (!upstream) return null
   if (profile?.upstreamBaseUrl === upstream && ['anthropic', 'chat-completions'].includes(profile.provider)) validateUpstream(upstream)
   else validateResponsesUpstream(upstream)
-  if (!profile || profile.upstreamBaseUrl !== upstream) assertDistinctFromAnalysis(upstream)
+  if (!profile || profile.upstreamBaseUrl !== upstream) assertDistinctFromAnalysis(upstream, option(args, '--model'))
   const apiKeyEnv = option(args, '--api-key-env', profile?.upstreamBaseUrl === upstream ? profile.apiKeyEnv : undefined)
   const keyless = args.includes('--keyless') || (apiKeyEnv === null && profile?.upstreamBaseUrl === upstream)
   const matching = profile?.upstreamBaseUrl === upstream ? profile : null

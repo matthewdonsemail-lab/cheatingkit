@@ -7,13 +7,15 @@ import { loadAnalysisProfile } from './analysisProfile.js'
 const root = () => process.env.CHEATINGKIT_HOME || join(homedir(), '.cheatingkit')
 const profilePath = () => join(root(), 'proxy-provider.json')
 
+// Distinct hosts are the strongest separation, but two models on one host are
+// equally not the same model, so a different model ID is accepted too.
 const sameUpstream = (a, b) => Boolean(a && b) && a.replace(/\/$/, '') === b.replace(/\/$/, '')
 
-export function assertDistinctFromAnalysis(upstreamBaseUrl) {
+export function assertDistinctFromAnalysis(upstreamBaseUrl, model) {
   const analysis = loadAnalysisProfile()
-  if (analysis.mode !== 'off' && sameUpstream(analysis.upstreamBaseUrl, upstreamBaseUrl)) {
-    throw new Error('The analysis provider cannot also be the main Codex provider; set the main route to the model the harness normally uses')
-  }
+  if (analysis.mode === 'off' || !sameUpstream(analysis.upstreamBaseUrl, upstreamBaseUrl)) return
+  if (model && typeof analysis.model === 'string' && analysis.model !== model) return
+  throw new Error('The analysis provider cannot also be the main Codex provider; set the main route to a different host or a different model')
 }
 
 export function validateProfile(profile) {
@@ -31,7 +33,7 @@ export function validateProfile(profile) {
 
 export function saveProfile(profile) {
   const value = validateProfile(profile)
-  assertDistinctFromAnalysis(value.upstreamBaseUrl)
+  assertDistinctFromAnalysis(value.upstreamBaseUrl, value.model)
   mkdirSync(root(), { recursive: true })
   const temp = `${profilePath()}.${process.pid}.tmp`
   writeFileSync(temp, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 })
