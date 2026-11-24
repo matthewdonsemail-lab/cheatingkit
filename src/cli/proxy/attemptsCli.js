@@ -10,6 +10,9 @@ export function formatAttemptSummary(attempt) {
     `Initial proposal recorded: ${proposal ? 'yes' : 'no'} | Revisions recorded: ${revisions}`,
     `Outcome: ${attempt.observation || 'pending'} | HTTP: ${attempt.httpStatus ?? 'unknown'}`,
   ]
+  const task = gate?.context?.taskState
+  if (task) lines.push(`Task: ${task.status} | ${task.taskId || 'unbound'} | revision ${task.revision ?? 'unknown'} | snapshot ${task.contextSnapshotId || 'unavailable'}`)
+  if (task?.state) lines.push(`Goal: ${task.state.goal.text}`, `Current action: ${task.state.currentAction.text}`, `Next action: ${task.state.nextAction?.text || 'not established'}`, `Acceptance: ${task.state.criteria.filter(item=>item.evidence.length).length}/${task.state.criteria.length} evidenced`)
   if (gate?.terminationReason) lines.push(`Gate reason: ${gate.terminationReason}`)
   for (const item of gate?.evaluations || []) {
     lines.push(`  Candidate ${item.revision + 1} / ${item.stage}: ${item.decision ?? (item.faithful ? 'faithful' : 'not faithful')} — ${item.reason}`)

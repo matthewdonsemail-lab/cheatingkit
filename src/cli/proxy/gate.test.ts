@@ -236,3 +236,40 @@ test('consistency evaluator outage cannot fall through to fidelity', async () =>
   expect(outcome.record.decision).toBe('block')
   expect(outcome.record.terminationReason).toContain('Consistency HTTP 429')
 })
+
+
+for(const enabled of [false,true]) test(`original-request fallback is explicit and still gated: ${enabled}`,async()=>{
+  let calls=0
+  const gate=createMessageGate({mode:'enforce',originalRequestFallback:enabled,contextForPrompt,evaluate:valid})
+  const proxy=createProxyServer({port:0,upstreamBaseUrl:'http://task.invalid/v1',gate,analyzeCodexRequest:async body=>({body,decision:{mode:'apply',status:'refused',proposedText:null,reason:'Proposer refused'}}),fetchUpstream:async(url,init)=>{calls++;expect(JSON.parse(init.body).input).toBe(JSON.parse(raw).input);return Response.json({})}})
+  try{const response=await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`,{method:'POST',body:raw});expect(response.status).toBe(enabled?200:403);expect(calls).toBe(enabled?1:0)}finally{proxy.stop(true)}
+})
+
+for(const status of ['unbound','ambiguous']) test(`required ${status} task state blocks even with fallback enabled`,async()=>{
+  let calls=0,evaluations=0
+  const gate=createMessageGate({mode:'enforce',originalRequestFallback:true,evaluate:async()=>{evaluations++;return {decision:'allow',reason:'must not run'}}})
+  const proxy=createProxyServer({port:0,upstreamBaseUrl:'http://task.invalid/v1',gate,analyzeCodexRequest:async body=>({body,decision:{mode:'apply',status:'needs_context',context:{taskState:{required:true,status}},reason:'Task not bound'}}),fetchUpstream:async()=>{calls++;return Response.json({})}})
+  try{const response=await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`,{method:'POST',body:raw});expect(response.status).toBe(403);expect(calls).toBe(0);expect(evaluations).toBe(0);expect(await response.text()).toContain(`task_${status}`)}finally{proxy.stop(true)}
+})
+
+
+for(const stage of ['rewrite','scope']) test(`rate-limited ${stage} is service unavailable, not a safety denial`,async()=>{
+ let calls=0
+ const store=openAttemptStore(openDatabase(':memory:'))
+ const gate=createMessageGate({mode:'enforce',contextForPrompt,evaluate:stage==='scope'?createGateEvaluator({model:'rate-scope',upstreamBaseUrl:'http://rate-scope.invalid/v1',fetchAnalysis:async()=>Response.json({},{status:429,headers:{'retry-after':'60'}})}):valid})
+ const proxy=createProxyServer({port:0,upstreamBaseUrl:'http://task.invalid/v1',gate,attemptStore:store,analyzeCodexRequest:stage==='rewrite'?async body=>({body,decision:{mode:'apply',reason:'analysis model returned HTTP 429',availability:{status:429,retryAfterMs:60000,stage:'rewrite'}}}):undefined,fetchUpstream:async()=>{calls++;return Response.json({})}})
+ try{
+  const response=await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`,{method:'POST',body:raw})
+  expect(response.status).toBe(503);expect(response.headers.get('retry-after')).toBe('60');expect(calls).toBe(0)
+  expect((await response.json()).error.code).toBe('analysis_rate_limited')
+  const attempt=store.get(response.headers.get('x-cheatingkit-request-id'));expect(attempt.observation).toBe('analysis_unavailable');expect(attempt.gateDecision.availability.stage).toBe(stage)
+ }finally{proxy.stop(true);store.close()}
+})
+
+test('gate evaluation omits harness tool schemas while preserving task state and core evidence',async()=>{
+ let sent
+ const evaluator=createGateEvaluator({model:'compact-test',upstreamBaseUrl:'http://compact.invalid/v1',fetchAnalysis:async(url,init)=>{sent=JSON.parse(JSON.parse(init.body).input);return Response.json({output_text:JSON.stringify({decision:'allow',reason:'in scope'})})}})
+ const taskState={contextHash:'immutable-hash',state:{goal:{text:'Implement parser'},directives:[{text:'Do not edit files',sourceId:'u1'}]}}
+ await evaluator('scope',{originalText:'continue',proposedText:'Inspect parser',evidence:'reviewed evidence',harnessContext:{taskState,taskEvidence:'duplicate rendered state',evidence:'reviewed evidence'},request:{input:'continue',tools:[{name:'read_file',parameters:{description:'SECRET_SCHEMA_TOKEN'.repeat(500)}}]}})
+ expect(sent.harnessContext.taskState).toEqual(taskState);expect(sent.evidence).toBe('reviewed evidence');expect(sent.request.toolNames).toEqual(['read_file']);expect(JSON.stringify(sent)).not.toContain('SECRET_SCHEMA_TOKEN');expect(sent.harnessContext.taskEvidence).toBeUndefined()
+})

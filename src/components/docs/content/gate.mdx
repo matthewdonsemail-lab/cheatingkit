@@ -55,3 +55,23 @@ The gate checks a task against locally defined scope and authorization criteria.
 Before a scope allow can proceed to independent fidelity validation, a separate evaluator call checks that the decision agrees with its rationale and the actual request. It receives the same reviewed evidence plus the recorded scope evaluation. A contradictory or unsupported allow, malformed consistency result, disagreement, timeout or evaluator error blocks forwarding in enforce mode. The audit retains both evaluations and a `scope_consistency_failed` termination reason when applicable. This check does not revise the request or retry a safety block.
 
 This adds one analysis-model call per candidate whose scope decision is allow, with the existing 30-second per-call timeout. A scope block or clarification terminates immediately. There remains one initial rewrite proposal and at most two fidelity revisions. The consistency check is model-based and cannot guarantee detection of every semantic contradiction; malformed outputs and reported disagreements always fail closed.
+
+
+## Durable tasks and original-request fallback
+
+The resident analysis path now binds requests to durable project tasks. A concrete initial instruction or explicit issue reference establishes a task; a session binding or an unambiguous active project task resolves a continuation. Unknown or ambiguous continuations remain unbound and are rejected in enforce mode. You can inspect task identity with `ck task list` and `ck task show ID`, explicitly start one with `ck task start --goal TEXT`, or bind a session with `ck task bind ID --session-id SESSION`. A request can name `continue task ID` to select a specific task.
+
+Task goals, ordered user directives, observations, source IDs and immutable context hashes persist locally. Later user directives remain visible even as the current action changes. The proposer, gate and provider share the same reviewed task snapshot. Task state does not grant permissions. Acceptance criteria require successful host receipts linked to the task and criterion; ordinary provider responses remain observations. Automatic correlation of arbitrary harness checks to acceptance criteria is not implemented.
+
+Explicit GitHub issue/PR references import versioned source snapshots through the authenticated `gh` executable. This optional source capability requires GitHub CLI and access to the linked repository. Refresh is cached for five minutes; comment and character bounds and excerpt omissions are recorded. Source errors stop requests requiring that specification. Selection by headings/recency is a bounded heuristic, not proof that all relevant requirements were recovered. A source budget is not an authorization mechanism.
+
+Original-request fallback is disabled by default. `ck proxy analysis fallback on` explicitly enables evaluating the unchanged original when the optional proposal is refused/unavailable; all required task binding, scope, consistency and fidelity gates still apply. `ck proxy analysis fallback off` disables it again. Restart the proxy after changing this setting. A missing required evaluation or unbound task never falls through to the provider. Typed proposal statuses distinguish a rewrite from a refusal, missing context or invalid output.
+
+The current runtime preserves direct user instructions rather than claiming autonomous semantic planning or guaranteed task completion. Generative analysis uses the configured provider; the local CPU embedding model remains retrieval infrastructure. No provider is selected automatically to obtain approval.
+
+
+## Analysis provider rate limits
+
+Rewrite and gate calls share a bounded, serialized provider/model queue. A 429 may be retried once when `Retry-After` fits within two seconds. Longer delays are surfaced immediately; exhausted rate limits establish a bounded cooldown so queued requests do not hammer the provider. Authentication failures, known billing/quota errors and model safety refusals are not treated as transient rewrite retries.
+
+In enforce mode, an unavailable analysis provider returns HTTP 503 with `Retry-After`, `analysis_rate_limited`, the affected stage and the request ID. The attempt records `analysis_unavailable`, not a safety denial. No task-provider call occurs. The configured original-request fallback remains off by default and cannot skip an unavailable required gate. Provider request payloads omit unrelated tool schemas and duplicate evidence renderings; task state and reviewed evidence remain attached.

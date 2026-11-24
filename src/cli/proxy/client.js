@@ -150,6 +150,14 @@ export async function runProxyCommand(args) {
   if (action === 'attempts') { inspectAttempts(args.slice(1), { store: openAttemptStore(openDatabase(attemptDatabasePath())) }); return }
   if (action === 'analysis') {
     if (args[1] === 'status') { console.log(JSON.stringify(loadAnalysisProfile())); return }
+    if (args[1] === 'fallback') {
+      if (!['on', 'off'].includes(args[2])) throw new Error('Use ck proxy analysis fallback on|off')
+      const profile = loadAnalysisProfile()
+      if (profile.mode === 'off') throw new Error('Configure analysis before setting original-request fallback')
+      console.log(JSON.stringify(saveAnalysisProfile({ ...profile, originalRequestFallback: args[2] === 'on' })))
+      console.log('Restart the proxy to apply original-request fallback settings. Required gates remain enforced.')
+      return
+    }
     if (args[1] === 'last') {
       const path = join(root(), 'proxy-analysis-last.json')
       console.log(existsSync(path) ? readFileSync(path, 'utf8').trim() : JSON.stringify({ available: false }))
@@ -228,11 +236,11 @@ export async function runProxyCommand(args) {
         writeFileSync(temp, JSON.stringify({ at: new Date().toISOString(), protocol, ...decision }) + '\n', { mode: 0o600 })
         renameSync(temp, path)
     }
-    const analysisOptions = { ...analysis, proxyPort: port, dbPath: attemptDatabasePath(), apiKey: analysis.mode !== 'off' ? providerKey('analysis', analysis) : undefined }
+    const analysisOptions = { ...analysis, structuredOutput: true, taskStateEnabled: true, proxyPort: port, dbPath: attemptDatabasePath(), apiKey: analysis.mode !== 'off' ? providerKey('analysis', analysis) : undefined }
     const analyzeCodexRequest = responses && analysis.mode !== 'off' ? createCodexAnalysis({ ...analysisOptions, onDecision: auditDecision('codex') }) : undefined
     const analyzeClaudeMessagesRequest = anthropic && analysis.mode !== 'off' ? createClaudeMessagesAnalysis({ ...analysisOptions, onDecision: auditDecision('claude') }) : undefined
     const analyzeHermesRequest = hermes && analysis.mode !== 'off' ? createHermesAnalysis({ ...analysisOptions, onDecision: auditDecision('hermes') }) : undefined
-    const gate = createMessageGate({ mode: option(args, '--gate-mode', process.env.CHEATINGKIT_GATE_MODE || 'observe'), dbPath: attemptDatabasePath(), evaluate: createGateEvaluator(analysisOptions) })
+    const gate = createMessageGate({ originalRequestFallback: analysis.originalRequestFallback === true, mode: option(args, '--gate-mode', process.env.CHEATINGKIT_GATE_MODE || 'observe'), dbPath: attemptDatabasePath(), evaluate: createGateEvaluator(analysisOptions) })
     const credentialMode = option(args, '--credential-mode', process.env.CHEATINGKIT_CREDENTIAL_MODE || 'native')
     const attemptStore = openAttemptStore(openDatabase(attemptDatabasePath()))
     let server

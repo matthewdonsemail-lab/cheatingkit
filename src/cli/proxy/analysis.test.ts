@@ -159,3 +159,18 @@ test('an unchanged successful proposal remains eligible for independent validati
   expect(result.body).toBe(raw)
   expect(result.decision).toMatchObject({ proposedText: 'Latest task', applied: false, reason: 'wording already clear; proposal unchanged' })
 })
+
+
+for(const status of ['refused','needs_context']) test(`typed analysis ${status} never becomes a rewrite`,async()=>{
+ const analyze=createCodexAnalysis({mode:'apply',structuredOutput:true,model:'analysis',upstreamBaseUrl:'https://analysis.invalid/v1',contextForPrompt:async()=>'',fetchAnalysis:async()=>Response.json({output_text:JSON.stringify({status,proposedText:null,reason:'Explicit analysis status'})})})
+ const result=await analyze(raw)
+ expect(result.body).toBe(raw);expect(result.decision.proposedText).toBeNull();expect(result.decision.status).toBe(status)
+})
+
+test('typed analysis rejects refusal text, unknown states and fabricated unchanged proposals',async()=>{
+ for(const text of ['I cannot help with this task.',JSON.stringify({status:'unbounded',reason:'invalid'}),JSON.stringify({status:'unchanged',proposedText:'A changed task',reason:'invalid'})]){
+  const analyze=createCodexAnalysis({mode:'apply',structuredOutput:true,model:'analysis',upstreamBaseUrl:'https://analysis.invalid/v1',contextForPrompt:async()=>'',fetchAnalysis:async()=>Response.json({output_text:text})})
+  const result=await analyze(raw);expect(result.decision.applied).toBe(false);expect(result.decision.proposedText).toBeNull()
+ }
+ expect(()=>validateAnalysisProfile({mode:'apply',model:'model',upstreamBaseUrl:'https://analysis.invalid/v1',apiKeyEnv:null,originalRequestFallback:'yes'})).toThrow('boolean')
+})

@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+import { openTaskStore } from '../context/tasks/client.js'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { openDatabase } from '../storage/client.js'
@@ -82,6 +84,17 @@ export function openAttemptStore(db = openDatabase()) {
     },
     finish(requestId, { httpStatus = null, responseCompleted = false, responseExcerpt = '', observation = null, error = null } = {}) {
       complete.run(new Date().toISOString(), httpStatus, responseCompleted ? 1 : 0, responseExcerpt.slice(0, maxExcerpt), observation, error?.slice(0, 500) || null, requestId)
+      const record=db.prepare('SELECT record FROM proxyGateDecisions WHERE requestId=?').get(requestId)
+      const taskState=record&&JSON.parse(record.record).context?.taskState
+      if(taskState?.status==='bound'){
+        const store=openTaskStore(db),task=store.get(taskState.taskId)
+        if(task){
+          const text=JSON.stringify({requestId,httpStatus,responseCompleted,observation,error,responseExcerpt:responseExcerpt.slice(0,maxExcerpt)})
+          const digest=createHash('sha256').update(text).digest('hex'),sourceId=`attempt/${requestId}/${digest}`
+          store.addSource({sourceId,kind:'provider_response',locator:`attempt/${requestId}`,text,authority:'observation'})
+          store.update({taskId:task.taskId,expectedRevision:task.revision,eventId:sourceId,sourceId,patch:{observation:text}})
+        }
+      }
     },
     list(limit = 20, prompt = null) {
       const safeLimit = Number.isInteger(limit) && limit >= 1 && limit <= 100 ? limit : 20
@@ -224,12 +237,14 @@ export async function trackProxyRequest(request, { store, harness, protocol, pro
       let result
       try {
         analysis = analyze ? await analyze(rawBody, { signal: request.signal }) : null
-        if (gate.mode === 'enforce' && analysis?.decision?.mode === 'apply' && !analysis.decision.proposedText) {
-          throw new Error(`Rewrite unavailable: ${analysis.decision.reason || 'no validated proposal'}`)
+        if (gate.mode === 'enforce' && ['apply', 'suggest'].includes(analysis?.decision?.mode) && !analysis.decision.proposedText && !gate.originalRequestFallback && !(analysis.decision.context?.taskState?.required && analysis.decision.context.taskState.status !== 'bound')) {
+          const error = new Error(`Rewrite unavailable: ${analysis.decision.reason || 'no validated proposal'}`)
+          error.availability = analysis.decision.availability
+          throw error
         }
         result = await gate(rawBody, { protocol, proposedText: analysis?.decision?.proposedText, analysisContext: analysis?.decision?.context, signal: request.signal })
       } catch (error) {
-        result = { body: rawBody, record: { originalRequest: rawBody, originalText: analysis?.decision?.originalText, mode: gate.mode || 'enforce', decision: 'block', terminationReason: `evaluator_error: ${error.message}`, evaluations: [], revisions: [], sourceIds: analysis?.decision?.sourceIds || [] } }
+        result = { body: rawBody, record: { originalRequest: rawBody, originalText: analysis?.decision?.originalText, mode: gate.mode || 'enforce', decision: 'block', terminationReason: `evaluator_error: ${error.message}`, evaluations: [], revisions: [], availability: error.availability, sourceIds: analysis?.decision?.sourceIds || [] } }
       }
       if (store && auditError && result.record.mode === 'enforce') {
         result.record.decision = 'block'; result.record.terminationReason = 'attempt audit unavailable'
@@ -252,6 +267,11 @@ export async function trackProxyRequest(request, { store, harness, protocol, pro
         } catch { /* the gate audit remains authoritative */ }
       }
       if (result.record.mode === 'enforce' && result.record.decision !== 'allow') {
+        if (result.record.availability?.status === 429) {
+          const retryAfter = Math.max(1, Math.ceil((result.record.availability.retryAfterMs || 1000) / 1000))
+          if(requestId) { try { store.finish(requestId,{httpStatus:503,observation:'analysis_unavailable',error:`analysis_rate_limited: ${result.record.availability.stage}`}) }catch{} }
+          return Response.json({error:{type:'cheatingkit_analysis_unavailable',code:'analysis_rate_limited',stage:result.record.availability.stage,message:'Analysis provider is rate-limited. The task was not forwarded.',retryAfterSeconds:retryAfter},requestId},{status:503,headers:{'retry-after':String(retryAfter),...(requestId?{'x-cheatingkit-request-id':requestId}:{})}})
+        }
         if (requestId) { try { store.finish(requestId, { observation: 'gate_' + result.record.decision, error: result.record.terminationReason }) } catch {} }
         return Response.json({ error: { type: 'cheatingkit_gate', decision: result.record.decision, message: result.record.terminationReason }, requestId }, { status: result.record.decision === 'needs_clarification' ? 422 : 403, headers: requestId ? { 'x-cheatingkit-request-id': requestId } : {} })
       }
