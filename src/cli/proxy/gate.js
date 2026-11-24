@@ -1,4 +1,5 @@
 import { requestAnalysis, rateLimitMetadata } from './analysisTransport.js'
+import { validateAnalysisResult, analysisSchemaInfo, analysisTransition } from './analysisSchema.js'
 // Keep task evidence intact while excluding unrelated tool schemas and duplicate renderings.
 export function compactEvaluationData(data) {
   const raw=data.request || {}
@@ -44,7 +45,13 @@ export function createGateEvaluator({ model, upstreamBaseUrl, protocol = 'respon
     if (!response.ok) { const error = new Error(`Gate evaluator returned HTTP ${response.status}`); error.availability = { ...rateLimitMetadata(response), stage }; throw error }
     const value = await response.json()
     const text = chat ? value.choices?.[0]?.message?.content : value.output_text ?? value.output?.flatMap((item) => item.content || []).filter((part) => part.type === 'output_text').map((part) => part.text).join('')
-    return JSON.parse(text)
+    let result
+    try { result = JSON.parse(text) } catch {
+      const error = new Error(`Typed ${stage} result is not JSON`)
+      error.code = 'analysis_schema_invalid'
+      throw error
+    }
+    return validateAnalysisResult(stage, result)
   }
 }
 
@@ -66,14 +73,20 @@ export function createMessageGate({ mode = 'observe', originalRequestFallback = 
   const gate = async function gate(rawBody, { protocol, proposedText, analysisContext, signal } = {}) {
     const record = { originalRequest: rawBody, mode, decision: 'allow', terminationReason: 'disabled', originalText: null, proposedText: null, evidence: '', sourceIds: [], evaluations: [], revisions: [] }
     if (mode === 'off') return { body: rawBody, record }
+    const selected = requestDetails(rawBody, protocol)
+    record.originalText = selected.originalText
+    record.proposedText = selected.originalText
+    // With no eligible user text nothing can be evaluated: forward identical bytes and record why.
+    if (mode === 'observe' && !selected.eligible) { record.terminationReason = 'no eligible latest user text; manual scope clarification required'; return { body: rawBody, record } }
     try {
-      const originalText = requestDetails(rawBody, protocol).originalText
-      record.originalText = originalText
+      const originalText = selected.originalText
       if (!originalText?.trim()) throw new Error('No eligible latest user text; manual scope clarification required')
       record.proposedText = proposedText ?? originalText
       if (typeof record.proposedText !== 'string' || !record.proposedText.trim() || record.proposedText.length > 12_000) throw new Error('Invalid proposed text')
       record.context = analysisContext || requestContext(JSON.parse(rawBody))
-      if (analysisContext?.taskState?.required && analysisContext.taskState.status !== 'bound') throw new Error(`task_${analysisContext.taskState.status || 'unbound'}: bind an explicit task before forwarding`)
+      if (analysisContext?.taskState?.required && analysisContext.taskState.status !== 'bound') {
+        if (analysisSchemaInfo().policies.unboundTask === 'reject') throw new Error(`task_${analysisContext.taskState.status || 'unbound'}: bind an explicit task before forwarding`)
+      }
       if (analysisContext) record.evidence = analysisContext.evidence || ''
       else if (contextForPrompt) record.evidence = String(await contextForPrompt(originalText))
       else {
@@ -84,33 +97,43 @@ export function createMessageGate({ mode = 'observe', originalRequestFallback = 
       record.sourceIds = [...new Set([...(record.context?.taskState?.evidenceSourceIds || []),...[...record.evidence.matchAll(/\[([A-Za-z][A-Za-z0-9_-]*\/[^\]\s#]+#[^\]\s]+)\]/g)].map((match) => match[1])])]
       for (let revision = 0; revision <= maxRevisions; revision++) {
         const data = { originalText, proposedText: record.proposedText, evidence: record.evidence, harnessContext: record.context, request: JSON.parse(rawBody) }
-        const scope = await evaluate('scope', data, { signal })
-        if (!['allow', 'block', 'needs_clarification'].includes(scope?.decision) || typeof scope.reason !== 'string' || !scope.reason.trim()) throw new Error('Invalid scope decision')
-        record.evaluations.push({ stage: 'scope', revision, ...scope })
-        if (scope.decision !== 'allow') {
-          record.decision = scope.decision
-          record.terminationReason = scope.reason
-          break
+        const step = (stage, outcome) => {
+          let transition
+          try { transition = analysisTransition(outcome, stage) } catch (error) {
+            throw Object.assign(new Error(`Invalid ${stage} outcome ${JSON.stringify(outcome)}; expected ${error.allowed.join('|')}`), { code: 'analysis_schema_invalid' })
+          }
+          record.schema = { version: analysisSchemaInfo().version, hash: analysisSchemaInfo().hash }
+          if (transition === 'reject') { record.decision = stage === 'consistency' ? 'block' : outcome === 'scope_needs_clarification' ? 'needs_clarification' : 'block' }
+          return transition
         }
+        const scope = await evaluate('scope', data, { signal })
+        record.evaluations.push({ stage: 'scope', revision, ...scope })
+        if (scope.decision !== 'allow') { step('scope', `scope_${scope.decision}`); record.terminationReason = scope.reason; break }
+        if (step('scope', 'scope_allow') === 'reject') { record.terminationReason = scope.reason; break }
         const consistency = await evaluate('consistency', { ...data, scopeEvaluation: scope }, { signal })
-        if (typeof consistency?.consistent !== 'boolean' || !['allow', 'block', 'needs_clarification'].includes(consistency.decision) || typeof consistency.reason !== 'string' || !consistency.reason.trim()) throw new Error('Invalid scope consistency decision')
         record.evaluations.push({ stage: 'consistency', revision, ...consistency })
         if (!consistency.consistent || consistency.decision !== 'allow') {
-          record.decision = 'block'
+          step('consistency', 'consistency_failed')
           record.terminationReason = `scope_consistency_failed: ${consistency.reason}`
           break
         }
+        if (step('consistency', 'consistency_allow') === 'reject') { record.terminationReason = consistency.reason; break }
         const validation = await evaluate('validate', data, { signal })
-        if (typeof validation?.faithful !== 'boolean' || typeof validation.reason !== 'string' || !validation.reason.trim()) throw new Error('Invalid independent validation')
         record.evaluations.push({ stage: 'validate', revision, ...validation })
-        if (validation.faithful) { record.decision = 'allow'; record.terminationReason = 'scope and semantic fidelity validated'; break }
+        if (validation.faithful) {
+          if (step('validate', 'validate_faithful') !== 'forward') { record.terminationReason = validation.reason; break }
+          record.decision = 'allow'; record.terminationReason = 'scope and semantic fidelity validated'; break
+        }
+        if (step('validate', 'validate_unfaithful') !== 'bounded_revision') { record.terminationReason = validation.reason; break }
         if (revision === maxRevisions) { record.decision = 'block'; record.terminationReason = 'semantic revision limit exhausted'; break }
         const revised = await evaluate('revise', { ...data, feedback: validation.reason }, { signal })
-        if (typeof revised?.proposedText !== 'string' || !revised.proposedText.trim() || revised.proposedText.length > 12_000 || typeof revised.reason !== 'string') throw new Error('Invalid semantic revision')
         record.revisions.push({ revision: revision + 1, previousText: record.proposedText, ...revised })
         record.proposedText = revised.proposedText
       }
-    } catch (error) { record.decision = 'block'; record.terminationReason = `evaluator_error: ${error.message}`; if(error.availability) record.availability=error.availability }
+    } catch (error) {
+      Object.assign(record, { decision: 'block', terminationReason: `evaluator_error: ${error.message}` })
+      if (error.availability) record.availability = error.availability
+    }
     let body = mode === 'enforce' && record.decision === 'allow' && record.proposedText !== record.originalText ? replaceText(rawBody, protocol, record.proposedText) : rawBody
     if (mode === 'enforce' && record.decision === 'allow' && protocol === 'responses' && record.context?.cwd && (record.evidence || record.context.taskEvidence)) {
       const forwarded = JSON.parse(body)
@@ -119,6 +142,9 @@ export function createMessageGate({ mode = 'observe', originalRequestFallback = 
       else forwarded.input.splice(forwarded.input.findLastIndex((item) => item?.role === 'user'), 0, contextMessage)
       body = JSON.stringify(forwarded)
     }
+    // Observe mode records the decision but always forwards the original bytes,
+    // except when no user text could be found.
+    if (mode === 'observe' && record.originalText?.trim()) record.decision = 'allow'
     record.forwardedRequest = mode === 'enforce' && record.decision !== 'allow' ? null : body
     return { body, record }
   }

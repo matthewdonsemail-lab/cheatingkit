@@ -34,8 +34,8 @@ export function requestDetails(rawBody, protocol) {
       const message = Array.isArray(body.messages) ? body.messages.findLast((item) => item?.role === 'user') : null
       text = plainContent(message?.content, protocol === 'messages' ? ['text'] : [])
     }
-    return { model, originalText: text && text.length <= maxText ? text : null }
-  } catch { return { model: null, originalText: null } }
+    return { model, originalText: text && text.length <= maxText ? text : null, eligible: Boolean(text?.trim() && text.length <= maxText) }
+  } catch { return { model: null, originalText: null, eligible: false } }
 }
 
 function eventText(value, protocol) {
@@ -233,18 +233,26 @@ export async function trackProxyRequest(request, { store, harness, protocol, pro
   try {
     if (gate) {
       const rawBody = await request.clone().text()
+      const selected = requestDetails(rawBody, protocol)
       let analysis
       let result
-      try {
-        analysis = analyze ? await analyze(rawBody, { signal: request.signal }) : null
-        if (gate.mode === 'enforce' && ['apply', 'suggest'].includes(analysis?.decision?.mode) && !analysis.decision.proposedText && !gate.originalRequestFallback && !(analysis.decision.context?.taskState?.required && analysis.decision.context.taskState.status !== 'bound')) {
-          const error = new Error(`Rewrite unavailable: ${analysis.decision.reason || 'no validated proposal'}`)
-          error.availability = analysis.decision.availability
-          throw error
+      // With no eligible user text nothing can be evaluated, so observe records
+      // why and forwards the identical bytes instead of failing the request.
+      if (gate.mode !== 'enforce' && !selected.eligible) {
+        result = { body: rawBody, record: { originalRequest: rawBody, mode: gate.mode || 'enforce', decision: 'allow', terminationReason: 'no eligible latest user text; manual scope clarification required', originalText: null, proposedText: null, evaluations: [], revisions: [], sourceIds: [] } }
+      } else {
+        try {
+          analysis = analyze ? await analyze(rawBody, { signal: request.signal }) : null
+          if (gate.mode === 'enforce' && ['apply', 'suggest'].includes(analysis?.decision?.mode) && !analysis.decision.proposedText && !gate.originalRequestFallback && !(analysis.decision.context?.taskState?.required && analysis.decision.context.taskState.status !== 'bound')) {
+            const error = new Error(`Rewrite unavailable: ${analysis.decision.reason || 'no validated proposal'}`)
+            error.availability = analysis.decision.availability
+            throw error
+          }
+          result = await gate(rawBody, { protocol, proposedText: analysis?.decision?.proposedText, analysisContext: analysis?.decision?.context, signal: request.signal })
+        } catch (error) {
+          const mode = gate.mode || 'enforce'
+          result = { body: rawBody, record: { originalRequest: rawBody, originalText: analysis?.decision?.originalText, mode, decision: mode === 'observe' ? 'allow' : 'block', terminationReason: `evaluator_error: ${error.message}`, evaluations: [], revisions: [], context: analysis?.decision?.context, proposalStatus: analysis?.decision?.status, availability: error.availability, sourceIds: analysis?.decision?.sourceIds || [] } }
         }
-        result = await gate(rawBody, { protocol, proposedText: analysis?.decision?.proposedText, analysisContext: analysis?.decision?.context, signal: request.signal })
-      } catch (error) {
-        result = { body: rawBody, record: { originalRequest: rawBody, originalText: analysis?.decision?.originalText, mode: gate.mode || 'enforce', decision: 'block', terminationReason: `evaluator_error: ${error.message}`, evaluations: [], revisions: [], context: analysis?.decision?.context, proposalStatus: analysis?.decision?.status, availability: error.availability, sourceIds: analysis?.decision?.sourceIds || [] } }
       }
       result.record.proposalStatus = analysis?.decision?.status || (analysis ? 'unknown' : 'disabled')
       if (store && auditError && result.record.mode === 'enforce') {
@@ -267,16 +275,22 @@ export async function trackProxyRequest(request, { store, harness, protocol, pro
           })
         } catch { /* the gate audit remains authoritative */ }
       }
-      if (result.record.mode === 'enforce' && result.record.decision !== 'allow') {
-        if ([429,503].includes(result.record.availability?.status)) {
-          const retryAfter = Math.max(1, Math.ceil((result.record.availability.retryAfterMs || 1000) / 1000))
-          if(requestId) { try { store.finish(requestId,{httpStatus:503,observation:'analysis_unavailable',error:`analysis_rate_limited: ${result.record.availability.stage}`}) }catch{} }
-          return Response.json({error:{type:'cheatingkit_analysis_unavailable',code:'analysis_rate_limited',stage:result.record.availability.stage,message:'Analysis provider is rate-limited. The task was not forwarded.',retryAfterSeconds:retryAfter},requestId},{status:503,headers:{'retry-after':String(retryAfter),...(requestId?{'x-cheatingkit-request-id':requestId}:{})}})
+      if (result.record.decision !== 'allow') {
+        // Observe already forwarded in the gate; the recorded decision is advisory.
+        if (result.record.mode === 'enforce') {
+          if ([429,503].includes(result.record.availability?.status)) {
+            const retryAfter = Math.max(1, Math.ceil((result.record.availability.retryAfterMs || 1000) / 1000))
+            if(requestId) { try { store.finish(requestId,{httpStatus:503,observation:'analysis_unavailable',error:`analysis_rate_limited: ${result.record.availability.stage}`}) }catch{} }
+            return Response.json({error:{type:'cheatingkit_analysis_unavailable',code:'analysis_rate_limited',stage:result.record.availability.stage,message:'Analysis provider is rate-limited. The task was not forwarded.',retryAfterSeconds:retryAfter},requestId},{status:503,headers:{'retry-after':String(retryAfter),...(requestId?{'x-cheatingkit-request-id':requestId}:{})}})
+          }
+          if (requestId) { try { store.finish(requestId, { observation: 'gate_' + result.record.decision, error: result.record.terminationReason }) } catch {} }
+          return Response.json({ error: { type: 'cheatingkit_gate', decision: result.record.decision, message: result.record.terminationReason }, requestId }, { status: result.record.decision === 'needs_clarification' ? 422 : 403, headers: requestId ? { 'x-cheatingkit-request-id': requestId } : {} })
         }
-        if (requestId) { try { store.finish(requestId, { observation: 'gate_' + result.record.decision, error: result.record.terminationReason }) } catch {} }
-        return Response.json({ error: { type: 'cheatingkit_gate', decision: result.record.decision, message: result.record.terminationReason }, requestId }, { status: result.record.decision === 'needs_clarification' ? 422 : 403, headers: requestId ? { 'x-cheatingkit-request-id': requestId } : {} })
       }
-      const response = await relay(async () => ({ body: result.record.mode === 'off' ? analysis?.body || rawBody : result.body, decision: analysis?.decision }))
+      // Observe forwards the analyzed body; only an enforced block needs the original
+      // bytes, otherwise a validated rewrite is silently dropped in observe.
+      const forwarded = result.record.mode === 'off' ? analysis?.body || rawBody : result.body
+      const response = await relay(async () => ({ body: forwarded, decision: analysis?.decision }))
       return requestId ? observeResponse(response, { store, requestId, protocol }) : response
     }
     const response = await relay(wrappedAnalysis)

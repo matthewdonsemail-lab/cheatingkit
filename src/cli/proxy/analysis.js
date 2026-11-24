@@ -1,4 +1,5 @@
 import { requestAnalysis, rateLimitMetadata } from './analysisTransport.js'
+import { validateAnalysisResult, analysisSchemaInfo, analysisTransition } from './analysisSchema.js'
 import { prepareTaskContext, renderTaskContext } from '../context/tasks/runtime.js'
 import { requestContext } from './requestContext.js'
 import { openDatabase } from '../storage/client.js'
@@ -6,6 +7,12 @@ import { buildStructuredContextPack } from '../context/client.js'
 import { validateUpstream } from './server.js'
 
 const modes = new Set(['off', 'suggest', 'apply'])
+
+function invalidResult(message) {
+  const error = new Error(message)
+  error.code = 'analysis_schema_invalid'
+  return error
+}
 
 function latestUser(input) {
   if (typeof input === 'string') return { text: input, replace: (body, text) => { body.input = text } }
@@ -122,18 +129,24 @@ export function createCodexAnalysis({ mode = 'off', protocol = 'responses', mode
       const responseBody = await analysisResponse.json()
       let proposed = (protocol === 'responses' ? outputText(responseBody) : chatOutputText(responseBody)).trim()
       if (structuredOutput) {
-        const result = JSON.parse(proposed)
-        if (!['proposed', 'unchanged', 'needs_context', 'refused'].includes(result?.status) || typeof result.reason !== 'string' || !result.reason.trim()) throw new Error('Invalid typed analysis result')
+        let result
+        try { result = JSON.parse(proposed) } catch { throw invalidResult('typed analysis result is not JSON') }
+        result = validateAnalysisResult('rewrite', result)
+        const transition = analysisTransition(result.status)
         decision.status = result.status
-        if (['refused', 'needs_context'].includes(result.status)) {
-          if (result.proposedText != null) throw new Error('Non-proposal status cannot contain a rewrite')
+        decision.schema = { version: analysisSchemaInfo().version, hash: analysisSchemaInfo().hash }
+        if (transition === 'reject') {
           decision.reason = result.reason
           return { body: rawBody, decision }
         }
-        if (result.status === 'unchanged' && result.proposedText !== null && result.proposedText !== selected.text) throw new Error('Unchanged proposal altered the original request')
-        proposed = result.status === 'unchanged' ? selected.text : result.proposedText
+        if (result.status === 'unchanged') {
+          decision.proposedText = selected.text
+          decision.reason = result.reason
+          return { body: rawBody, decision }
+        }
+        proposed = result.proposedText
       }
-      if (typeof proposed !== 'string' || !proposed || proposed.length > 12_000) throw new Error('no usable proposal')
+      if (typeof proposed !== 'string' || !proposed || proposed.length > 12_000) throw invalidResult('no usable proposal')
       decision.status = proposed === selected.text ? 'unchanged' : 'proposed'
       decision.proposedText = proposed
       decision.reason = proposed === selected.text ? 'wording already clear; proposal unchanged' : mode === 'apply' ? 'proposal applied' : 'proposal recorded'
@@ -144,7 +157,8 @@ export function createCodexAnalysis({ mode = 'off', protocol = 'responses', mode
       }
       return { body: rawBody, decision }
     } catch (error) {
-      decision.status = error instanceof SyntaxError || error.message.includes('typed analysis') ? 'invalid' : 'unavailable'
+      // unavailable is transport, invalid is a rejected result; neither is a task outcome.
+      decision.status = error.code === 'analysis_schema_invalid' ? 'invalid' : 'unavailable'
       decision.reason = error.message
       if (error.availability) decision.availability = error.availability
       else if (error.code === 'analysis_queue_full') decision.availability = { status: 503, code: error.code, retryAfterMs: 1000, stage: 'rewrite' }

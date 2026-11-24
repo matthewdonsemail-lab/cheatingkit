@@ -69,3 +69,14 @@ test('final rate limit creates a provider cooldown without another provider hit'
   expect((await requestAnalysis(async()=>{calls++;return Response.json({})},url,init(),{clock:()=>clock})).status).toBe(200)
   expect(calls).toBe(2)
 })
+
+
+test('provider pacing is shared across sequential stage calls',async()=>{
+ let time=10000;const starts=new Map(),delays=[],observed=[]
+ const options={minIntervalMs:6000,starts,clock:()=>time,sleep:async ms=>{delays.push(ms);time+=ms}}
+ const fetchImpl=async()=>{observed.push(time);return Response.json({ok:true})}
+ await requestAnalysis(fetchImpl,url,init(),options)
+ await requestAnalysis(fetchImpl,url,init(),options)
+ await requestAnalysis(fetchImpl,url,init(),options)
+ expect(observed).toEqual([10000,16000,22000]);expect(delays).toEqual([6000,6000])
+})

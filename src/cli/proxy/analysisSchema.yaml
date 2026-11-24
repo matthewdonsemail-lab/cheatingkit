@@ -1,0 +1,65 @@
+version: 1
+policies:
+  originalRequestFallbackDefault: false
+  unboundTask: reject
+  maxRevisions: 2
+  maxRateRetries: 1
+  minIntervalMs: 6000
+transitions:
+  proposed: scope
+  unchanged: scope
+  needs_context: reject
+  refused: reject
+  scope_allow: consistency
+  scope_block: reject
+  scope_needs_clarification: reject
+  consistency_allow: validate
+  consistency_failed: reject
+  validate_faithful: forward
+  validate_unfaithful: bounded_revision
+operations:
+  rewrite:
+    oneOf:
+      - type: object
+        additionalProperties: false
+        required: [status, proposedText, reason]
+        properties:
+          status: {const: proposed}
+          proposedText: {type: string, minLength: 1, maxLength: 12000}
+          reason: {type: string, minLength: 1}
+      - type: object
+        additionalProperties: false
+        required: [status, proposedText, reason]
+        properties:
+          status: {enum: [unchanged, needs_context, refused]}
+          proposedText: {type: 'null'}
+          reason: {type: string, minLength: 1}
+  scope:
+    type: object
+    additionalProperties: false
+    required: [decision, reason]
+    properties:
+      decision: {enum: [allow, block, needs_clarification]}
+      reason: {type: string, minLength: 1}
+  consistency:
+    type: object
+    additionalProperties: false
+    required: [consistent, decision, reason]
+    properties:
+      consistent: {type: boolean}
+      decision: {enum: [allow, block, needs_clarification]}
+      reason: {type: string, minLength: 1}
+  validate:
+    type: object
+    additionalProperties: false
+    required: [faithful, reason]
+    properties:
+      faithful: {type: boolean}
+      reason: {type: string, minLength: 1}
+  revise:
+    type: object
+    additionalProperties: false
+    required: [proposedText, reason]
+    properties:
+      proposedText: {type: string, minLength: 1, maxLength: 12000}
+      reason: {type: string, minLength: 1}

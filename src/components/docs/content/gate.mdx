@@ -37,7 +37,17 @@ ck proxy start --gate-mode enforce
 
 `CHEATINGKIT_GATE_MODE=off|observe|enforce` selects the mode for a launched proxy. Stop a running proxy before changing modes; `ck proxy status` reports the active mode. `ck proxy attempts [request ID]` shows the gate decision beside the observed outcome.
 
-Without a configured analysis model, `observe` records an evaluator error and forwards the original request; `enforce` blocks. Unsupported requests without eligible plain user text also fail closed in enforce mode. Set `CHEATINGKIT_GATE_MODE` in the environment used by your launcher to retain the selected mode after a restart.
+Without a configured analysis model, `observe` records an evaluator error and forwards the original request; `enforce` blocks. Unsupported requests without eligible plain user text record why and are forwarded untouched in observe, and fail closed in enforce. Set `CHEATINGKIT_GATE_MODE` in the environment used by your launcher to retain the selected mode after a restart.
+
+## Contract
+
+Evaluation output is not free-form JSON. `src/cli/proxy/analysisSchema.yaml` is a versioned contract with five operations (`rewrite`, `scope`, `consistency`, `validate`, `revise`), each an exact shape with typed values and explicit lengths. The rewrite operation is a union: `proposed` carries `proposedText`, while `unchanged`, `needs_context` and `refused` carry `proposedText: null`, so an unchanged proposal keeps the host's exact bytes. Every other operation is a flat object whose fields are all required.
+
+Validation is deterministic and runs before any result is used. A missing field, unknown field, string where a boolean belongs, empty rationale, missing transition or an out-of-range value fails closed as an evaluator error; it never becomes an allow. The outcome-to-next-step map (`transitions`) is the only route through the gate, so a recognized but unmapped outcome stops the request instead of continuing by default.
+
+The file also carries the bounded policies: fallback defaults off, an unbound required task is rejected before evaluation, revisions stop at two, one rate-limit retry is allowed, and calls are paced. Each decision record and rewrite attempt stores the contract `version` and content `hash`, so an audit shows which contract judged it.
+
+Prompt text in `analysis.js` and `gate.js` restates the contract; the YAML is authoritative. Change the YAML first, then the prompts, and update the parsers together.
 
 Native credentials are preserved even when a task-provider key is configured. To intentionally substitute the configured destination provider's credentials, use `--credential-mode provider` on start/install or set `CHEATINGKIT_CREDENTIAL_MODE=provider`. Reinstall an existing Codex route to update its authentication setting. Protocol translation uses the selected destination provider's credentials.
 

@@ -18,9 +18,10 @@ test('isolated proxy home uses its own corpus database path', () => {
 
 test('request details select only latest plain user text and model, excluding tool and media payloads', () => {
   const parsed = requestDetails(JSON.stringify({ model: 'gpt-test', input: [{ role: 'user', content: [{ type: 'input_text', text: 'Inspect this' }] }, { type: 'function_call', arguments: 'secret tool input' }] }), 'responses')
-  expect(parsed).toEqual({ model: 'gpt-test', originalText: 'Inspect this' })
+  expect(parsed).toEqual({ model: 'gpt-test', originalText: 'Inspect this', eligible: true })
   const media = requestDetails(JSON.stringify({ model: 'claude-test', messages: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }, { type: 'image', source: { data: 'secret image' } }] }] }), 'messages')
   expect(media.originalText).toBeNull()
+  expect(media.eligible).toBe(false)
 })
 
 test('streaming request links decision and evidence to observed warning after SSE completion', async () => {

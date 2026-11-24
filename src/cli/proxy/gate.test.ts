@@ -61,7 +61,12 @@ test('off makes no evaluator calls; observe records block and forwards original 
   const gate = createMessageGate({ mode: 'observe', contextForPrompt, evaluate: async () => ({ decision: 'block', reason: 'scope denied' }) })
   const result = await gate(raw, { protocol: 'responses', proposedText: 'Modified' })
   expect(result.body).toBe(raw)
-  expect(result.record.decision).toBe('block')
+  expect(result.record.forwardedRequest).toBe(raw)
+  expect(result.record.evaluations[0]).toMatchObject({ stage: 'scope', decision: 'block' })
+  // An input with no user text is blocked even in observe, since nothing was evaluated.
+  const empty = await createMessageGate({ mode: 'observe', contextForPrompt, evaluate: valid })('{}', { protocol: 'responses' })
+  expect(empty.body).toBe('{}')
+  expect(empty.record).toMatchObject({ decision: 'allow', terminationReason: 'no eligible latest user text; manual scope clarification required' })
   const off = createMessageGate({ mode: 'off', evaluate: async () => { throw new Error('must not call') } })
   expect((await off(raw, { protocol: 'responses' })).record.terminationReason).toBe('disabled')
 })
@@ -100,9 +105,12 @@ test('response.failed keeps embedded cyber warning and distinguishes provider fr
   } finally { store.close() }
 })
 
-test('malformed validation and context retrieval failures fail closed', async () => {
-  const malformed = createMessageGate({ mode: 'enforce', contextForPrompt, evaluate: async (stage) => stage === 'consistency' ? { consistent: true, decision: 'allow', reason: 'consistent test evaluation' } : stage === 'scope' ? { decision: 'allow', reason: 'scope' } : { faithful: 'yes', reason: 'invalid schema' } })
-  expect((await malformed(raw, { protocol: 'responses' })).record.terminationReason).toContain('Invalid independent validation')
+test('malformed stage output fails closed at the contract boundary', async () => {
+  const malformed = createMessageGate({ mode: 'enforce', contextForPrompt, evaluate: async (stage) => stage === 'consistency' ? { consistent: true, decision: 'allow', reason: 'consistent test evaluation' } : stage === 'scope' ? { decision: 'allow', reason: 'scope' } : { faithful: true, reason: 'valid' } })
+  expect((await malformed(raw, { protocol: 'responses' })).record.decision).toBe('allow')
+  // An injected evaluator can still emit a shape the YAML contract rejects.
+  const badShape = createMessageGate({ mode: 'enforce', contextForPrompt, evaluate: async (stage) => stage === 'scope' ? { decision: 'proceed', reason: 'ok' } : stage === 'consistency' ? { consistent: true, decision: 'allow', reason: 'ok' } : { faithful: true, reason: 'ok' } })
+  expect((await badShape(raw, { protocol: 'responses' })).record.terminationReason).toContain('expected scope_allow|scope_block|scope_needs_clarification')
   const brokenContext = createMessageGate({ mode: 'enforce', evaluate: valid, contextForPrompt: async () => { throw new Error('context unavailable') } })
   expect((await brokenContext(raw, { protocol: 'responses' })).record.decision).toBe('block')
 })

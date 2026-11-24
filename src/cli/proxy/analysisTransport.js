@@ -1,3 +1,4 @@
+const providerStarts = new Map()
 const queues = new Map()
 const providerCooldowns = new Map()
 function abortError() { return new DOMException('Analysis request cancelled', 'AbortError') }
@@ -73,8 +74,9 @@ function enqueue(key,run,signal) {
 
 // Analysis calls are nonstreaming. Buffer each bounded JSON response before
 // releasing the provider slot so the next stage does not overlap its body read.
-export function requestAnalysis(fetchImpl,url,init={}, {sleep=wait,clock=Date.now,maxWaitMs=2000,cooldowns=providerCooldowns}={}) {
+export function requestAnalysis(fetchImpl,url,init={}, {sleep=wait,clock=Date.now,maxWaitMs=2000,minIntervalMs=0,starts=providerStarts,cooldowns=providerCooldowns}={}) {
   if(!Number.isFinite(maxWaitMs)||maxWaitMs<0||maxWaitMs>2000) throw new Error('Invalid analysis retry wait bound')
+  if(!Number.isFinite(minIntervalMs)||minIntervalMs<0||minIntervalMs>60000) throw new Error('Invalid analysis pacing interval')
   const key=keyOf(url,init)
   const remember=response=>{
     if(response.status===429)cooldowns.set(key,clock()+Math.max(1000,Math.min(300000,retryDelay(response,clock))))
@@ -86,6 +88,10 @@ export function requestAnalysis(fetchImpl,url,init={}, {sleep=wait,clock=Date.no
     if(deadline>clock()) return Response.json({error:{code:'analysis_provider_cooldown',message:'Analysis provider is rate limited; retry after the indicated delay'}},{status:429,headers:{'retry-after':String(Math.ceil((deadline-clock())/1000))}})
     for(let attempt=0;attempt<2;attempt++){
       cancelled(init.signal)
+      const gap=minIntervalMs>0?(starts.get(key)||0)-clock():0
+      if(gap>0)await sleep(gap,init.signal)
+      cancelled(init.signal)
+      if(minIntervalMs>0)starts.set(key,clock()+minIntervalMs)
       const response=await fetchImpl(url,init)
       if(response.status===429&&attempt===0){
         const saved=await buffered(response)
