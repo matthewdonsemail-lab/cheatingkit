@@ -9,6 +9,7 @@ const path = () => join(root(), 'proxy-analysis.json')
 export function validateAnalysisProfile(value) {
   if (!['off', 'suggest', 'apply'].includes(value?.mode)) throw new Error('Analysis mode must be off, suggest, or apply')
   if (value.mode === 'off') return { mode: 'off' }
+  if (value.originalRequestFallback !== undefined && typeof value.originalRequestFallback !== 'boolean') throw new Error('Original-request fallback must be a boolean')
   const protocol = value.protocol || 'responses'
   if (!['responses', 'chat-completions'].includes(protocol)) throw new Error('Analysis protocol must be Responses or Chat Completions')
   validateUpstream(value.upstreamBaseUrl)
@@ -16,7 +17,7 @@ export function validateAnalysisProfile(value) {
   if (value.apiKeyEnv !== null && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value.apiKeyEnv || '')) throw new Error('Analysis key environment variable must be a valid name or null')
   if (value.apiKeySource !== undefined && value.apiKeySource !== 'local') throw new Error('Unknown analysis API key source')
   if (value.apiKeySource === 'local' && value.apiKeyEnv !== null) throw new Error('A stored analysis key cannot also use an environment variable')
-  return { mode: value.mode, protocol, upstreamBaseUrl: value.upstreamBaseUrl, model: value.model, apiKeyEnv: value.apiKeyEnv, ...(value.apiKeySource === 'local' ? { apiKeySource: 'local' } : {}) }
+  return { ...(value.originalRequestFallback === undefined ? {} : { originalRequestFallback: value.originalRequestFallback }), mode: value.mode, protocol, upstreamBaseUrl: value.upstreamBaseUrl, model: value.model, apiKeyEnv: value.apiKeyEnv, ...(value.apiKeySource === 'local' ? { apiKeySource: 'local' } : {}) }
 }
 
 export function loadAnalysisProfile() {

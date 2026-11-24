@@ -11,8 +11,10 @@ export async function relayChatCompletions(request, { upstreamBaseUrl, apiKey, f
   const target = new URL('chat/completions', `${base.href}/`)
   try {
     const headers = relayHeaders(request.headers)
-    headers.delete('authorization')
-    if (apiKey) headers.set('authorization', `Bearer ${apiKey}`)
+    if (apiKey !== undefined) {
+      headers.delete('authorization')
+      if (apiKey) headers.set('authorization', `Bearer ${apiKey}`)
+    }
     const body = analyzeHermesRequest ? (await analyzeHermesRequest(await request.text(), { signal: request.signal })).body : request.body
     if (request.signal.aborted) return new Response('Client disconnected', { status: 499 })
     const response = await fetchUpstream(target, { method: 'POST', headers, body, signal: request.signal, duplex: 'half', redirect: 'manual' })

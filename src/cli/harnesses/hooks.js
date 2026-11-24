@@ -6,14 +6,19 @@ import { spawnSync } from 'node:child_process'
 
 const own = (hook) => typeof hook?.command === 'string' && hook.command.includes('index.ts') && hook.command.includes(' hook --harness ')
 const entry = fileURLToPath(new URL('../index.ts', import.meta.url))
-const command = (harness) => `"${process.execPath}" "${entry}" hook --harness ${harness}`
+export function hookCommand(harness) {
+  if (process.platform === 'win32' && harness === 'codex') {
+    return `& '${process.execPath.replaceAll("'", "''")}' '${entry.replaceAll("'", "''")}' hook --harness ${harness}`
+  }
+  return `"${process.execPath}" "${entry}" hook --harness ${harness}`
+}
 
 function updateJson(path, action, harness) {
   const value = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {}
   value.hooks ||= {}
   const groups = Array.isArray(value.hooks.UserPromptSubmit) ? value.hooks.UserPromptSubmit : []
   const kept = groups.map((group) => ({ ...group, hooks: (group.hooks || []).filter((hook) => !own(hook)) })).filter((group) => group.hooks.length)
-  if (action === 'install') kept.push({ hooks: [{ type: 'command', command: command(harness), timeout: 15 }] })
+  if (action === 'install') kept.push({ hooks: [{ type: 'command', command: hookCommand(harness), timeout: 15 }] })
   if (kept.length) value.hooks.UserPromptSubmit = kept
   else delete value.hooks.UserPromptSubmit
   if (!Object.keys(value.hooks).length) delete value.hooks

@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { Database } from 'bun:sqlite'
+import { initializeTasks } from '../context/tasks/client.js'
 
 export function databasePath(env = process.env) {
   return env.CHEATINGKIT_DB || join(homedir(), '.cheatingkit', 'sessions.db')
@@ -78,6 +79,11 @@ export function openDatabase(path = databasePath()) {
       observation TEXT,
       error TEXT
     );
+    CREATE TABLE IF NOT EXISTS proxyGateDecisions (
+      requestId TEXT PRIMARY KEY REFERENCES proxyAttempts(requestId),
+      recordedAt TEXT NOT NULL,
+      record TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS sourceCursors (
       sourcePath TEXT PRIMARY KEY,
       harness TEXT NOT NULL,
@@ -138,5 +144,6 @@ export function openDatabase(path = databasePath()) {
     CREATE INDEX IF NOT EXISTS proxyAttemptsByTime ON proxyAttempts(startedAt DESC);
     CREATE INDEX IF NOT EXISTS proxyAttemptsBySession ON proxyAttempts(harness,sessionId,sourceId);
   `)
+  initializeTasks(db)
   return db
 }

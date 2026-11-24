@@ -37,7 +37,7 @@ export function createClaudeMessagesAnalysis(options = {}) {
       return { body: rawBody, decision: result.decision }
     }
     const virtualTurns = [...priorPlainTurns(parsed.messages.slice(0, selected.index)), { role: 'user', content: selected.text }]
-    const virtual = JSON.stringify({ input: virtualTurns })
+    const virtual = JSON.stringify({ client_metadata: parsed.client_metadata || parsed.metadata, input: virtualTurns })
     const result = await analyzeText(virtual, { signal })
     if (!result.decision.applied) return { body: rawBody, decision: result.decision }
     const replacement = JSON.parse(result.body).input.at(-1).content
