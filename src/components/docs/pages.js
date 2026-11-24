@@ -56,7 +56,7 @@ export const pages = [
   { slug: 'models/minilm', title: 'MiniLM embeddings', description: 'Exact local embedding model, operation, examples, and files.', sections: ['How it works', 'Why this model', 'Exact use example', 'Pinned files'], Content: ModelMiniLM },
   { slug: 'models/gliner', title: 'GLiNER 2.5 screening', description: 'Exact local extraction model, operation, examples, and files.', sections: ['How it works', 'Why this model', 'Exact use example', 'Pinned files'], Content: ModelGLiNER },
   { slug: 'models/context-pipeline', title: 'Local context and search', description: 'Incremental indexing, retrieval, harness delivery, and gate input.', sections: ['Import and index', 'Per-message recall', 'Harness delivery', 'Gate input', 'Scope of the index'], Content: ContextPipeline },
-  { slug: 'repl', title: 'The RLM environment', description: 'Work in a persistent workspace where the prompt is a variable.', sections: ['Open an environment', 'Run a cell', 'Rounds', 'Ask the gate', 'Capabilities', 'Through MCP', 'Storage'], Content: Repl },
+  { slug: 'repl', title: 'The RLM environment', description: 'Work in a persistent workspace where the prompt is a variable.', sections: ['Open an environment', 'Run a cell', 'Rounds', 'From the proxy', 'Ask the gate', 'Capabilities', 'Through MCP', 'Storage'], Content: Repl },
   { slug: 'database', title: 'Database design', description: 'SQLite source records, projections, and cursors.', sections: ['Source and projections', 'Cursors and recovery', 'Time and identity', 'Private data', 'Rebuild contract'], Content: Database },
 ]
 

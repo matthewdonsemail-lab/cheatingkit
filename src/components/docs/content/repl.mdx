@@ -24,7 +24,7 @@ Each call is its own process. The environment is restored from its snapshot befo
 
 ## Rounds
 
-A round is a Manage-Execute-Audit cycle. The manager holds the task state and picks one subtask. An executor episode does only that subtask. A separate read-only auditor kernel inspects the environment and returns a verdict.
+A round is a Manage-Execute-Audit cycle, fanned out. The manager holds the task state and picks one subtask. N parallel executor attempts each work only that subtask in their own kernel and directory. A separate read-only auditor inspects every attempt at once and returns one verdict.
 
 An executor claim never changes state. A record reaches `completed` only on a clean audit result, and the control stays `execute` until it does. Control is `execute`, `done`, `blocked` or `ask`.
 
@@ -34,6 +34,14 @@ ck repl round --id <replId> --require "..." --artifact out.txt --limit 5
 ```
 
 Each `--require` records one requirement. `--artifact` names the file the auditor checks for the round's record. Every round writes a report under the environment's `audit/` directory.
+
+## From the proxy
+
+There is one road in. A prompt in the harness that the gate blocks is handed to the environment, which works the goal in rounds while the request waits. Escalation is on by default (`CHEATINGKIT_ESCALATE`, default `enforce`; `off` restores the bare `403`). It calls the same gate, on the same corpus and the same database.
+
+A round is **fanned out**: `CHEATINGKIT_ESCALATE_PARALLEL` attempts (default 3) run at the same time, each in its own kernel with its own attenuated capability and its own attempt directory, against the shared durable state. The auditor judges all attempts together and one clean attempt certifies the record, so a failed attempt cannot borrow a sibling's file. Retrying and parallelism are the same operation at different N.
+
+If the goal completes on audit evidence the harness receives `409` with `decision: "escalated"` and the round list; otherwise the `403` carries the escalation result. `ck proxy status` reports the mode and fan-out width.
 
 ## Ask the gate
 

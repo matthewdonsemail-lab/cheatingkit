@@ -214,7 +214,7 @@ function explicitId(request, name) {
 
 // Keeps request and response ownership in the protocol relay. Enforcement
 // fails closed when the gate audit cannot be saved; IDs stay local to the DB.
-export async function trackProxyRequest(request, { store, harness, protocol, provider, analyze, relay, gate }) {
+export async function trackProxyRequest(request, { store, harness, protocol, provider, analyze, relay, gate, escalate }) {
   let requestId
   let auditError = null
   try {
@@ -284,7 +284,24 @@ export async function trackProxyRequest(request, { store, harness, protocol, pro
             return Response.json({error:{type:'cheatingkit_analysis_unavailable',code:'analysis_rate_limited',stage:result.record.availability.stage,message:'Analysis provider is rate-limited. The task was not forwarded.',retryAfterSeconds:retryAfter},requestId},{status:503,headers:{'retry-after':String(retryAfter),...(requestId?{'x-cheatingkit-request-id':requestId}:{})}})
           }
           if (requestId) { try { store.finish(requestId, { observation: 'gate_' + result.record.decision, error: result.record.terminationReason }) } catch {} }
-          return Response.json({ error: { type: 'cheatingkit_gate', decision: result.record.decision, message: result.record.terminationReason }, requestId }, { status: result.record.decision === 'needs_clarification' ? 422 : 403, headers: requestId ? { 'x-cheatingkit-request-id': requestId } : {} })
+          // A block is a decision on the wording, not necessarily the end of the goal. When
+          // escalation is wired the environment takes the goal over and works it in rounds.
+          if (escalate && result.record.decision === 'block') {
+            const escalation = await escalate({
+              goal: result.record.originalText || result.record.proposedText,
+              harness, sessionId: result.record.context?.sessionId,
+              evidence: result.record.sourceIds,
+            }).catch((error) => ({ control: 'blocked', error: error.message, rounds: [] }))
+            if (requestId) { try { store.gateDecision(requestId, { ...store.get(requestId)?.gateDecision, escalation }) } catch {} }
+            if (escalation?.completed) {
+              return Response.json({
+                error: { type: 'cheatingkit_gate', decision: 'escalated', message: `Gate blocked the wording; the environment completed the goal in ${escalation.rounds?.length || 0} audited round(s).`, requestId },
+                escalation,
+              }, { status: 409, headers: requestId ? { 'x-cheatingkit-request-id': requestId } : {} })
+            }
+            result.record.escalation = escalation
+          }
+          return Response.json({ error: { type: 'cheatingkit_gate', decision: result.record.decision, message: result.record.terminationReason }, requestId, ...(result.record.escalation ? { escalation: result.record.escalation } : {}) }, { status: result.record.decision === 'needs_clarification' ? 422 : 403, headers: requestId ? { 'x-cheatingkit-request-id': requestId } : {} })
         }
       }
       // Observe forwards the analyzed body; only an enforced block needs the original

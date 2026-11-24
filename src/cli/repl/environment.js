@@ -68,6 +68,7 @@ export function createEnvironment({ db, replId, goal, mode = 'read-only', budget
       return mintCapability(db, { replId, action, resource, intent, budget: childBudget, parentToken: capability })
     },
     currentCapability: () => currentCapability(),
+    capabilityToken: () => capability,
     recordEvaluation(record) {
       db.prepare('INSERT INTO replEvaluations(id,replId,round,trigger,decision,reason,evidence,dimensions,compliance,createdAt) VALUES(?,?,?,?,?,?,?,?,?,?)')
         .run(randomUUID(), replId, record.round ?? null, record.trigger, record.decision, record.reason,

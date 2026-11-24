@@ -243,8 +243,32 @@ export async function runProxyCommand(args) {
     const gate = createMessageGate({ originalRequestFallback: analysis.originalRequestFallback === true, mode: option(args, '--gate-mode', process.env.CHEATINGKIT_GATE_MODE || 'observe'), dbPath: attemptDatabasePath(), evaluate: createGateEvaluator(analysisOptions) })
     const credentialMode = option(args, '--credential-mode', process.env.CHEATINGKIT_CREDENTIAL_MODE || 'native')
     const attemptStore = openAttemptStore(openDatabase(attemptDatabasePath()))
+    const { createEscalation } = await import('../repl/escalation.js')
+    const escalateMode = process.env.CHEATINGKIT_ESCALATE || 'enforce'
+    const escalate = createEscalation({
+      mode: escalateMode,
+      copies: Number(process.env.CHEATINGKIT_ESCALATE_PARALLEL || 3),
+      harnessHandler: {
+        'gate.evaluate': async ({ originalText, proposedText, evidence }) => {
+          if (analysis.mode === 'off') return { decision: 'block', reason: 'no analysis model; escalation fails closed', evidence: [] }
+          const { record } = await gate(JSON.stringify({ input: proposedText || originalText }), { protocol: 'responses', proposedText, analysisContext: { evidence: evidence || '' } })
+          return { decision: record.decision, reason: record.terminationReason, evidence: record.sourceIds }
+        },
+        'audit.list': async ({ path: target }) => {
+          const { readdirSync } = await import('node:fs')
+          try { return { entries: readdirSync(target) } } catch { return { entries: [] } }
+        },
+        'attempt.touch': async ({ dir, name }) => {
+          const { writeFileSync, mkdirSync } = await import('node:fs')
+          const { join } = await import('node:path')
+          mkdirSync(dir, { recursive: true })
+          writeFileSync(join(dir, name), `attempt ${new Date().toISOString()}\n`)
+          return { path: join(dir, name) }
+        },
+      },
+    })
     let server
-    try { server = createProxyServer({ port, upstreamBaseUrl: responses?.upstream, apiKey: responses && (credentialMode === 'provider' || responses.responsesProtocol !== 'responses') ? providerKey('codex', responses) : undefined, responsesProtocol: responses?.responsesProtocol, anthropicUpstreamBaseUrl: anthropic?.upstreamBaseUrl, anthropicApiKey: anthropic && credentialMode === 'provider' ? providerKey('claude', anthropic) : undefined, hermesUpstreamBaseUrl: hermes?.upstreamBaseUrl, hermesApiKey: hermes && credentialMode === 'provider' ? providerKey('hermes', hermes) : undefined, analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest, attemptStore, gate, credentialMode }) }
+    try { server = createProxyServer({ port, upstreamBaseUrl: responses?.upstream, apiKey: responses && (credentialMode === 'provider' || responses.responsesProtocol !== 'responses') ? providerKey('codex', responses) : undefined, responsesProtocol: responses?.responsesProtocol, anthropicUpstreamBaseUrl: anthropic?.upstreamBaseUrl, anthropicApiKey: anthropic && credentialMode === 'provider' ? providerKey('claude', anthropic) : undefined, hermesUpstreamBaseUrl: hermes?.upstreamBaseUrl, hermesApiKey: hermes && credentialMode === 'provider' ? providerKey('hermes', hermes) : undefined, analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest, attemptStore, gate, escalate, credentialMode }) }
     catch (error) { attemptStore.close(); throw error }
     writeState({ gateMode: gate.mode, credentialMode, pid: process.pid, port: server.port, startedAt: new Date().toISOString(), version: installedVersion().version, upstreamBaseUrl: responses?.upstream || null, responsesProtocol: responses?.responsesProtocol || null, apiKeyEnv: responses?.apiKeyEnv || null, apiKeySource: responses?.apiKeySource || null, anthropicUpstreamBaseUrl: anthropic?.upstreamBaseUrl || null, anthropicApiKeyEnv: anthropic?.apiKeyEnv || null, anthropicApiKeySource: anthropic?.apiKeySource || null, hermesUpstreamBaseUrl: hermes?.upstreamBaseUrl || null, hermesApiKeyEnv: hermes?.apiKeyEnv || null, hermesApiKeySource: hermes?.apiKeySource || null })
     console.log(`CheatingKit proxy listening on http://127.0.0.1:${server.port}/v1`)
@@ -262,6 +286,8 @@ export async function runProxyCommand(args) {
       ...(state && live?.pid === state.pid ? { running: true, ...state } : { running: false, staleState: Boolean(state) }),
       main: mainProfile ? { provider: mainProfile.provider, upstreamBaseUrl: mainProfile.upstreamBaseUrl, model: mainProfile.model } : null,
       analysis: analysis.mode === 'off' ? { mode: 'off' } : { mode: analysis.mode, protocol: analysis.protocol, upstreamBaseUrl: analysis.upstreamBaseUrl, model: analysis.model },
+      escalate: process.env.CHEATINGKIT_ESCALATE || 'enforce',
+      escalateParallel: Number(process.env.CHEATINGKIT_ESCALATE_PARALLEL || 3),
     }))
     return
   }

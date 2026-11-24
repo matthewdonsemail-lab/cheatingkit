@@ -30,7 +30,7 @@ export function validateResponsesUpstream(raw) {
   return url
 }
 
-export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, responsesProtocol = 'responses', anthropicUpstreamBaseUrl, anthropicApiKey, hermesUpstreamBaseUrl, hermesApiKey, fetchUpstream = fetch, analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest, attemptStore, gate = createMessageGate(), credentialMode = 'native' } = {}) {
+export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, responsesProtocol = 'responses', anthropicUpstreamBaseUrl, anthropicApiKey, hermesUpstreamBaseUrl, hermesApiKey, fetchUpstream = fetch, analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest, attemptStore, gate = createMessageGate(), escalate, credentialMode = 'native' } = {}) {
   if (!['native', 'provider'].includes(credentialMode)) throw new Error('Credential mode must be native or provider')
   if (!upstreamBaseUrl && !anthropicUpstreamBaseUrl && !hermesUpstreamBaseUrl) throw new Error('Configure at least one proxy upstream')
   const upstream = upstreamBaseUrl ? (responsesProtocol === 'responses' ? validateResponsesUpstream(upstreamBaseUrl) : validateUpstream(upstreamBaseUrl)) : null
@@ -60,7 +60,7 @@ export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, respon
           return new Response(response.body, { status: response.status, headers: relayHeaders(response.headers) })
         } catch { return Response.json({ error: { message: 'Model discovery failed' } }, { status: 502 }) }
       }
-      const relayTracked = (harness, protocol, provider, analyze, relay) => trackProxyRequest(request, { store: attemptStore, harness, protocol, provider, analyze, relay, gate })
+      const relayTracked = (harness, protocol, provider, analyze, relay) => trackProxyRequest(request, { store: attemptStore, harness, protocol, provider, analyze, relay, gate, escalate })
       if (anthropicUpstream && anthropicPath(path)) {
         const relay = (analyze) => relayAnthropicRequest(request, { upstreamBaseUrl: anthropicUpstream.href, apiKey: credentialMode === 'provider' ? anthropicApiKey : undefined, fetchUpstream, analyzeMessagesRequest: analyze })
         return path === '/v1/messages' && request.method === 'POST' ? relayTracked('claude', 'messages', 'anthropic', analyzeClaudeMessagesRequest, relay) : relay(analyzeClaudeMessagesRequest)

@@ -38,7 +38,13 @@ function handlers(config, database) {
         .run(randomUUID(), replId, data.trigger || 'manual', data.decision || 'allow', data.reason || '', JSON.stringify(data.evidence || []), JSON.stringify(data.dimensions || {}), data.compliance ?? null, new Date().toISOString())
       return { recorded: true }
     },
-    'audit.exists': async ({ path: target }) => ({ exists: existsSync(target), path: target }),
+    'audit.list': async ({ path: target }) => { const { readdirSync } = await import('node:fs'); try { return { entries: readdirSync(target) } } catch { return { entries: [] } } },
+    'attempt.touch': async ({ dir, name }) => {
+      const { writeFileSync, mkdirSync } = await import('node:fs')
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, name), `attempt ${new Date().toISOString()}\n`)
+      return { path: join(dir, name) }
+    },
   }
 }
 
@@ -82,15 +88,18 @@ export async function runReplCommand(args) {
       const results = await reopen({
         config, database, replId, session,
         run: async (env) => {
-          const { openState, setArtifactPath, decide } = await import('./mea.js')
+          const { openState, setArtifactPath, decide, unresolved } = await import('./mea.js')
           const { runRound } = await import('./rounds.js')
           if (requirements.length) openState(database, env, { requirements })
           const outcomes = []
           for (let index = 0; index < limit; index++) {
+            if (artifact) {
+              const target = unresolved(env)[0]
+              if (target) setArtifactPath(database, target.id, artifact)
+            }
             const outcome = await runRound({ db: database, env, replId, goal: session.goal, onHostRequest: (data, ctx) => handlers(config, database)[data.type](data, ctx) })
             outcomes.push({ round: outcome.round, control: outcome.control, verdict: outcome.verdict, recordId: outcome.recordId })
             if (outcome.control !== 'execute') break
-            if (artifact) setArtifactPath(database, outcome.recordId, artifact)
             if (decide(database, replId).control !== 'execute') break
           }
           return { outcomes, final: decide(database, replId) }
