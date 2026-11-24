@@ -1,5 +1,6 @@
 import { anthropicPath, relayAnthropicRequest } from './anthropic.js'
 import { relayChatCompletions } from './chatCompletions.js'
+import { relayCodexAnthropic } from './codexAnthropic.js'
 
 const hopHeaders = new Set(['connection', 'content-length', 'host', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade'])
 
@@ -17,7 +18,7 @@ export function validateUpstream(raw) {
   return url
 }
 
-export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, anthropicUpstreamBaseUrl, anthropicApiKey, hermesUpstreamBaseUrl, hermesApiKey, fetchUpstream = fetch, analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest } = {}) {
+export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, responsesProtocol = 'responses', anthropicUpstreamBaseUrl, anthropicApiKey, hermesUpstreamBaseUrl, hermesApiKey, fetchUpstream = fetch, analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest } = {}) {
   if (!upstreamBaseUrl && !anthropicUpstreamBaseUrl && !hermesUpstreamBaseUrl) throw new Error('Configure at least one proxy upstream')
   const upstream = upstreamBaseUrl ? validateUpstream(upstreamBaseUrl) : null
   const anthropicUpstream = anthropicUpstreamBaseUrl ? validateUpstream(anthropicUpstreamBaseUrl) : null
@@ -33,6 +34,8 @@ export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, anthro
       if (anthropicUpstream && anthropicPath(path)) return relayAnthropicRequest(request, { upstreamBaseUrl: anthropicUpstream.href, apiKey: anthropicApiKey, fetchUpstream, analyzeMessagesRequest: analyzeClaudeMessagesRequest })
       if (hermesUpstream && path === '/v1/chat/completions' && request.method === 'POST') return relayChatCompletions(request, { upstreamBaseUrl: hermesUpstream.href, apiKey: hermesApiKey, fetchUpstream, analyzeHermesRequest })
       if (!upstream || path !== '/v1/responses' || request.method !== 'POST') return new Response('Not found', { status: 404 })
+      if (responsesProtocol === 'anthropic') return relayCodexAnthropic(request, { upstreamBaseUrl: upstream.href, apiKey, fetchUpstream, analyzeCodexRequest })
+      if (responsesProtocol !== 'responses') return new Response('Unknown Responses provider protocol', { status: 500 })
       const target = new URL('responses', `${upstream.href}/`)
       try {
         const headers = relayHeaders(request.headers)

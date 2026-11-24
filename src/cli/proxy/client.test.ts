@@ -114,3 +114,34 @@ test('Hermes-only install starts Chat Completions relay and restores Hermes sett
     rmSync(home, { recursive: true, force: true })
   }
 }, 60000)
+
+test('Codex Anthropic profile installs translated route and restores hosted search setting', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'ck-proxy-codex-anthropic-'))
+  let received: any = null
+  const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
+    received = { path: new URL(request.url).pathname, key: request.headers.get('x-api-key'), body: await request.json() }
+    return Response.json({ id: 'msg_mock', model: 'claude-test', content: [{ type: 'text', text: 'Hello' }], usage: { input_tokens: 2, output_tokens: 1 } })
+  } })
+  const config = join(home, 'codex.toml')
+  const entry = join(import.meta.dir, '..', 'index.ts')
+  const port = 42000 + Math.floor(Math.random() * 20000)
+  const original = 'model = "original-model"\nweb_search = "cached"\n'
+  writeFileSync(config, original)
+  writeFileSync(join(home, 'proxy-provider.json'), JSON.stringify({ provider: 'anthropic', upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, model: 'claude-test', apiKeyEnv: 'TEST_ANTHROPIC_KEY' }))
+  const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml'), TEST_ANTHROPIC_KEY: 'mock-key' }
+  const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 15000, windowsHide: true })
+  try {
+    expect(run('install', 'codex', '--port', String(port)).status).toBe(0)
+    expect(readFileSync(config, 'utf8')).toContain('web_search = "disabled"')
+    const response = await fetch(`http://127.0.0.1:${port}/v1/responses`, { method: 'POST', body: JSON.stringify({ model: 'claude-test', input: 'Hello', stream: false }) })
+    expect((await response.json()).output[0].content[0].text).toBe('Hello')
+    expect(received).toMatchObject({ path: '/v1/messages', key: 'mock-key', body: { model: 'claude-test' } })
+    expect(run('remove', 'codex').status).toBe(0)
+    expect(readFileSync(config, 'utf8')).toBe(original)
+    expect(JSON.parse(run('stop').stdout).stopped).toBe(true)
+  } finally {
+    try { process.kill(JSON.parse(readFileSync(join(home, 'proxy.json'), 'utf8')).pid) } catch {}
+    upstream.stop(true)
+    rmSync(home, { recursive: true, force: true })
+  }
+}, 60000)

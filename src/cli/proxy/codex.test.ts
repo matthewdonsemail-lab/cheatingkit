@@ -46,3 +46,11 @@ test('selected provider model is restored with the original Codex model', () => 
   expect(patch.content).toContain('model = "new-model"')
   expect(removeCodexRoute(patch.content, patch)).toBe(original)
 })
+
+test('Anthropic route disables Codex hosted web search and restores its previous setting', () => {
+  const original = 'model = "old-model"\nweb_search = "cached"\n[agents]\nenabled = true\n'
+  const patch = addCodexRoute(original, 'http://127.0.0.1:4178/v1', 'claude-test', { disableWebSearch: true })
+  expect(patch.content).toContain('web_search = "disabled"')
+  expect(patch.content).toContain('[agents]\nenabled = true')
+  expect(removeCodexRoute(patch.content, patch)).toBe(original)
+})
