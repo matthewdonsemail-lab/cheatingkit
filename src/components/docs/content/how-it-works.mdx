@@ -1,29 +1,46 @@
 # How it works
 
-CheatingKit reconstructs a task from the user's own local conversation history. The flow has five parts: capture, normalize, index, retrieve, and supply cited context.
+CheatingKit stores your local sessions in SQLite, finds the ones relevant to a new
+request, and supplies cited evidence alongside that request. Nothing you typed is
+changed.
 
-## The context problem
+## The path
 
-A task may span multiple sessions and harnesses. A later prompt such as “continue the loader issue” does not restate the original target, earlier findings, or a correction that narrowed the work. A model switch or a warning response can also interrupt the apparent continuity of the session. The system therefore preserves the event sequence instead of treating the latest message as the entire task.
+1. **Import.** Claude Code and Codex JSONL, plus Hermes SQLite, become rows with source
+   IDs, tool calls, models and ordering. See [Harnesses](/docs/harnesses).
+2. **Index.** [MiniLM](/docs/models/minilm) and BM25 index overlapping message windows.
+   The key for a window is the user's own words, so a short request is not diluted by
+   surrounding assistant text. See [Local context and search](/docs/models/context-pipeline).
+3. **Retrieve.** A new request is matched against that index, scoped to the current
+   project. Later corrections are kept and shown as later evidence, never substituted
+   for what you asked.
+4. **Deliver.** A bounded [context pack](/docs/models/context-pipeline) with source IDs
+   goes in through harness hooks, or through MCP.
+5. **Decide.** With the proxy in the path, the [per-message gate](/docs/gate) checks the
+   request before it is forwarded, and records the decision.
 
-## The approach
+Hooks and the gate read the same corpus. Hooks deliver context while your harness keeps
+its own provider and credentials.
 
-1. Import Claude Code and Codex JSONL and Hermes SQLite messages into a common schema, retaining source IDs, tool calls, models, and ordering.
-2. Use [MiniLM](/docs/models/minilm) and BM25 to index overlapping conversation windows. Use [GLiNER 2.5](/docs/models/gliner) to extract candidate goals, targets, constraints, and completion criteria from user messages.
-3. Search when a new request arrives, then compare retrieved statements with later user corrections. Assistant and tool text can provide evidence but cannot supersede a user's instruction.
-4. Build a bounded context pack containing the selected source passages, message IDs, and uncertainty. A harness integration passes that context alongside the unchanged user request.
-5. When the harness uses the local proxy, check the request in the [per-message gate](/docs/gate) before forwarding, then record warning and model-switch observations against the same timeline so the user can inspect what happened.
+## The RLM environment
 
-Hooks and the gate use the same corpus. Hooks deliver context while the harness keeps its own provider and credentials. The gate adds a pre-send decision in the proxy path: it checks scope and authorization, independently validates that proposed wording preserves the original goals and constraints, and allows, blocks, or asks for clarification before any provider call. For the exact cursor, index, and recovery design, see [Local context and search](/docs/models/context-pipeline).
+A prompt can also enter an [RLM environment](/docs/repl) instead of going straight to a
+provider. The request is rewritten there against your own indexed history in parallel
+rounds; warnings recorded in earlier sessions are shaped by local models; and the
+auditor keeps only a candidate that still outlines the original goal in neutral wording.
+The winning candidate becomes the request the provider sees.
 
-## The provider proxy and the gate
+The environment is reachable through `ck repl` and through MCP, so a harness is the only
+way in. Each cell runs under a capability minted for that session and budget.
 
-The provider proxy is a separate integration. `ck proxy setup` offers OpenAI Responses, Anthropic Messages, Agnes 3.0 Flash, a custom Responses-compatible provider, or a Chat Completions-compatible provider, then configures Codex with a dedicated local provider whose WebSocket transport is disabled. The Agnes choice prefills `https://apihub.agnes-ai.com/v1` and `agnes-3.0-flash` and uses Chat Completions translation. For OpenAI and custom Responses providers, the resident server relays HTTP `/v1/responses` requests and SSE streams. For Anthropic or Chat Completions, it translates supported Codex requests to `/v1/messages` or `/v1/chat/completions` and maps text, tool calls, usage, errors, and SSE events back to Responses format. Translation preserves instructions, conversation, supported images, and function tools. Namespace tools are flattened for Chat Completions and restored on return. `ck proxy remove codex` restores the prior Codex provider, model, and hosted web-search setting. Translation rejects previous response IDs, opaque encrypted reasoning replay, non-image media, and unsupported built-in tools; it cannot preserve provider reasoning as Codex reasoning state.
+## Provider relay
 
-Request analysis is off by default, so the task provider receives the original request bytes. Run `ck proxy analysis setup` to select a **separate** Responses or Chat Completions analysis model and choose `suggest` or `apply`. The Agnes 3.0 Flash option prefills its Chat Completions base URL and model ID. Restart the proxy after changing this setting. The analysis model receives the latest plain user message, a bounded plain-text excerpt of the current conversation, and bounded, source-linked local session evidence. Tool payloads and media are excluded from that excerpt. `suggest` forwards the original request and records proposed wording. `apply` replaces only that latest user text in the forwarded request; the selected task model, previous conversation, tools, and other fields stay in place. A failed analysis forwards the original request. Inspect the latest decision with `ck proxy analysis last`, or turn analysis off with `ck proxy analysis off` and restart. Analysis setup accepts its own masked direct API key, an environment variable, or a keyless local endpoint. Direct keys are stored in restricted plaintext files under `~/.cheatingkit/proxy-secrets`; profile and status output contain only the key source.
+`ck proxy setup` configures a local loopback relay for [Codex](/docs/harnesses/codex),
+[Claude Code](/docs/harnesses/claude-code) or [Hermes](/docs/harnesses/hermes). Native
+credentials are preserved by default. The relay can translate between Responses,
+Anthropic Messages and Chat Completions where the harness needs it. See
+[Releases and installation](/docs/releases) for the routes and credential modes.
 
-`ck proxy setup claude` configures Claude Code's `ANTHROPIC_BASE_URL` to use the same loopback server. Its separate Anthropic profile uses the Messages-compatible base URL entered during setup and a masked direct API key or environment variable. The server relays native `/v1/messages` and `/v1/messages/count_tokens` requests and responses without converting their format. The shared analysis setting applies to Claude `/v1/messages` when enabled; `/v1/messages/count_tokens` stays unchanged. `ck proxy remove claude` restores the prior Claude Code setting. This native route is independent of the Codex-to-Anthropic translation. [Issue #10](https://github.com/matthewdonsemail-lab/cheatingkit/issues/10) tracks additional harness adapters.
-
-`ck proxy setup hermes` chooses a Chat Completions-compatible provider and model, then changes Hermes's model route to the same loopback server. A separate Hermes profile directs `/v1/chat/completions` to its selected upstream; `ck proxy remove hermes` restores the previous Hermes model settings. Hermes can share the resident server with the other harnesses while using its own provider key. With analysis enabled, the latest plain string user message and bounded plain-text prior user/assistant turns are analyzed before forwarding. Hermes tool messages and multipart user content stay out of that analysis; the task request keeps its model, conversation, tools, and stream setting. The response returns to Hermes in Chat Completions format. This route does not translate between Chat Completions, Responses, and Anthropic Messages.
-
-The [per-message gate](/docs/gate) runs on every eligible request through these routes before it is forwarded. Native relay credentials are preserved by default, so the harness keeps its own authentication. The analysis provider has its own key, used only for analysis and gate evaluations. Enforcement is off by default in rollout terms: `observe` records decisions and forwards original bytes, `enforce` applies them, and `off` disables evaluation. See [Getting started](/docs/getting-started) for the commands.
+`ck proxy analysis setup` adds a separate analysis model. It is used for the gate and
+the environment, never for your task provider. See [The gate](/docs/gate) for rollout
+modes and decisions.

@@ -1,20 +1,23 @@
 # GLiNER 2.5 screening
 
-CheatingKit uses [GLiNER 2.5 Small on Hugging Face](https://huggingface.co/fastino/gliner2.5-small-v1) to identify what the user asked for inside local conversations: the goal, action, target, constraints, and expected result. It screens stored user messages and the incoming request locally so CheatingKit can compare the current task with earlier instructions. The model's download is about **303.9 MB**.
+CheatingKit pins [GLiNER 2.5 Small](https://huggingface.co/fastino/gliner2.5-small-v1) as a local extraction model. The pin is kept exact so it can be wired when a supported loader is available. It is **not currently used in the running CLI**: no worker calls it, and no extracted rows are stored.
 
-## How it works
+## Current state
 
-A local Python worker receives user-authored message text and a task-specific extraction schema. It identifies candidate spans for the requested action, target, stated goal, constraints, and completion criteria. CheatingKit stores the candidate value, confidence, model and schema revision, and originating message ID. It screens changed messages during the same incremental index pass that builds search windows.
+The architecture that would use it is specified but not built:
 
-GLiNER creates candidates; it does not decide whether the earlier goal still applies. The context resolver compares candidates with later user corrections and the current request. Warning observations come from assistant responses and model-event records, not from an unsupported claim that GLiNER predicts refusals.
+- a local worker receives user-authored text and an extraction schema
+- it returns candidate goals, targets, constraints and completion criteria
+- each candidate carries its value, confidence, model and schema revision, and source message ID
+- candidates are evidence for the context resolver, not a decision about whether an earlier goal still applies
 
-## Why this model
+For the working CLI, the local models in use are MiniLM (embedding and search) and, in the RLM environment, MiniLM prototype scoring plus `Xenova/nli-deberta-v3-xsmall` for zero-shot property extraction. See [The RLM environment](/docs/repl).
 
-The model provides structured extraction on CPU without sending full transcripts to a hosted service. Its local worker can screen the user's own history in batches. This matters because semantic similarity alone cannot tell CheatingKit which words state the target or limit the work. The task schema and labeled evaluation set cover coding-agent language, corrections, and ambiguous goals.
+## Why the pin stays
 
-## Exact use example
+GLiNER 2.5 is `gliner2` architecture, which transformers.js does not map; a zero-shot pipeline on those files falls back to a bare encoder. Removing the pin would lose the artifact before a loader that supports it exists. Keeping it exact means enabling it later needs no re-download and no ambiguity about which files were tested.
 
-For “Inspect `loader.dll` for the startup crash; do not change the binary,” the worker records a candidate action of *inspect*, target of *loader.dll startup crash*, and constraint of *do not change the binary*, all linked to that user message. If the user later says, “Actually, patch the loader,” the later message is retained as a correction. Retrieval shows both sources and applies the newer instruction when building context.
+The long-term case for local extraction is unchanged: structured goals and constraints on CPU, without sending transcripts to a hosted service, where semantic similarity alone cannot say which words state the target or limit the work.
 
 ## Pinned files
 
@@ -28,4 +31,4 @@ The model ID is `fastino/gliner2.5-small-v1`; the revision is `b5d42bf7dc7d01c40
 | `tokenizer.json` | 8,341,713 | Git blob SHA-1 `a93077b30f99647415b09c3534fed78681ffc853` |
 | `tokenizer_config.json` | 645 | Git blob SHA-1 `5efd586306801b08ca13390b0619a94c943046e4` |
 
-The model cache lives outside the CLI package. Each extracted row records this pin and its extraction-schema version. Changing either causes re-extraction from SQLite source messages. [Getting started](/docs/getting-started) records which commands are available in the working CLI.
+The model cache lives outside the CLI package. The pin and file sizes are checked by `npm run docs:check` against `src/cli/models/constants.js`.

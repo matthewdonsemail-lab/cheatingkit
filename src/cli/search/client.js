@@ -6,7 +6,7 @@ import { models } from '../models/client.js'
 import { loadConfig, expandPath } from '../config/client.js'
 
 const embedModel = models.find((model) => model.key === 'minilm')
-const modelId = `${embedModel.id}@${embedModel.revision}`
+const modelId = `${embedModel.id}@${embedModel.revision}#userkey`
 let extractor
 
 function textOf(raw) {
@@ -39,7 +39,10 @@ function chunksOf(rows) {
   for (let start = 0; start < messages.length; start += 3) {
     const window = messages.slice(start, start + 4)
     const text = window.map((row) => `${row.role}: ${row.text.replace(/\s+/g, ' ')}`).join('\n')
-    chunks.push({ chunkStart: start, text, messageIds: window.map((row) => row.sourceId), textHash: createHash('sha256').update(text).digest('hex') })
+    // The key is the user's own words in the window, not the whole multi-turn blob:
+    // a short intent is diluted below the similarity bar by surrounding assistant text.
+    const userText = window.filter((row) => row.role === 'user').map((row) => row.text.replace(/\s+/g, ' ')).join(' ').slice(0, 1200)
+    chunks.push({ chunkStart: start, text, key: userText || text, messageIds: window.map((row) => row.sourceId), textHash: createHash('sha256').update(text).digest('hex') })
     if (start + 4 >= messages.length) break
   }
   return chunks
@@ -51,8 +54,8 @@ export async function indexSessions(db, report = () => {}, embed = localEmbed, {
   const sessions = db.prepare("SELECT harness,sessionId FROM sessions WHERE (? IS NULL OR lower(replace(rtrim(cwd, '/'),char(92),'/'))=lower(replace(rtrim(?, '/'),char(92),'/'))) ORDER BY harness,sessionId").all(cwd || null, cwd || null)
   const selectRows = db.prepare("SELECT sourceId,role,body FROM messages WHERE harness=? AND sessionId=? AND role IN ('user','assistant') ORDER BY sourcePosition,sourceId")
   const selectHeld = db.prepare('SELECT id,chunkStart,textHash,modelId,vector FROM searchChunks WHERE harness=? AND sessionId=?')
-  const upsert = db.prepare(`INSERT INTO searchChunks(harness,sessionId,chunkStart,messageIds,text,textHash,modelId,vector)
-    VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(harness,sessionId,chunkStart) DO UPDATE SET messageIds=excluded.messageIds,text=excluded.text,textHash=excluded.textHash,modelId=excluded.modelId,vector=excluded.vector`)
+  const upsert = db.prepare(`INSERT INTO searchChunks(harness,sessionId,chunkStart,messageIds,text,keyText,textHash,modelId,vector)
+    VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(harness,sessionId,chunkStart) DO UPDATE SET messageIds=excluded.messageIds,text=excluded.text,keyText=excluded.keyText,textHash=excluded.textHash,modelId=excluded.modelId,vector=excluded.vector`)
   const idOf = db.prepare('SELECT id FROM searchChunks WHERE harness=? AND sessionId=? AND chunkStart=?')
   const deleteFts = db.prepare('DELETE FROM searchChunksFts WHERE rowid=?')
   const putFts = db.prepare('INSERT INTO searchChunksFts(rowid,text) VALUES(?,?)')
@@ -67,13 +70,13 @@ export async function indexSessions(db, report = () => {}, embed = localEmbed, {
       return !old || old.textHash !== chunk.textHash || old.modelId !== modelId
     })
     const vectors = []
-    for (let start = 0; start < changed.length; start += 24) vectors.push(...await embed(changed.slice(start, start + 24).map((chunk) => chunk.text)))
+    for (let start = 0; start < changed.length; start += 24) vectors.push(...await embed(changed.slice(start, start + 24).map((chunk) => chunk.key)))
     db.exec('BEGIN IMMEDIATE')
     try {
       for (const [index, chunk] of changed.entries()) {
         const old = held.get(chunk.chunkStart)
         if (old) deleteFts.run(old.id)
-        upsert.run(session.harness, session.sessionId, chunk.chunkStart, JSON.stringify(chunk.messageIds), chunk.text, chunk.textHash, modelId, vectorBytes(vectors[index]))
+        upsert.run(session.harness, session.sessionId, chunk.chunkStart, JSON.stringify(chunk.messageIds), chunk.text, chunk.key, chunk.textHash, modelId, vectorBytes(vectors[index]))
         const id = idOf.get(session.harness, session.sessionId, chunk.chunkStart).id
         putFts.run(id, chunk.text)
       }

@@ -125,6 +125,7 @@ export function openDatabase(path = databasePath()) {
       chunkStart INTEGER NOT NULL,
       messageIds TEXT NOT NULL,
       text TEXT NOT NULL,
+      keyText TEXT,
       textHash TEXT NOT NULL,
       modelId TEXT NOT NULL,
       vector BLOB NOT NULL,
@@ -231,6 +232,10 @@ export function openDatabase(path = databasePath()) {
     CREATE INDEX IF NOT EXISTS replSubagentsByRepl ON replSubagents(replId);
     CREATE INDEX IF NOT EXISTS replHeartbeatsByRepl ON replHeartbeats(replId, status);
   `)
+  // Existing databases predate keyText; add it without discarding the index.
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('searchChunks') WHERE name='keyText'").get()) {
+    db.exec('ALTER TABLE searchChunks ADD COLUMN keyText TEXT')
+  }
   initializeTasks(db)
   return db
 }
