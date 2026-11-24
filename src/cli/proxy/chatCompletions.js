@@ -6,14 +6,16 @@ function relayHeaders(source) {
   return headers
 }
 
-export async function relayChatCompletions(request, { upstreamBaseUrl, apiKey, fetchUpstream = fetch }) {
+export async function relayChatCompletions(request, { upstreamBaseUrl, apiKey, fetchUpstream = fetch, analyzeHermesRequest }) {
   const base = new URL(upstreamBaseUrl)
   const target = new URL('chat/completions', `${base.href}/`)
   try {
     const headers = relayHeaders(request.headers)
     headers.delete('authorization')
     if (apiKey) headers.set('authorization', `Bearer ${apiKey}`)
-    const response = await fetchUpstream(target, { method: 'POST', headers, body: request.body, signal: request.signal, duplex: 'half', redirect: 'manual' })
+    const body = analyzeHermesRequest ? (await analyzeHermesRequest(await request.text(), { signal: request.signal })).body : request.body
+    if (request.signal.aborted) return new Response('Client disconnected', { status: 499 })
+    const response = await fetchUpstream(target, { method: 'POST', headers, body, signal: request.signal, duplex: 'half', redirect: 'manual' })
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers: relayHeaders(response.headers) })
   } catch (error) {
     if (request.signal.aborted) return new Response('Client disconnected', { status: 499 })

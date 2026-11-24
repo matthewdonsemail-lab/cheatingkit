@@ -1,4 +1,5 @@
 import { anthropicPath, relayAnthropicRequest } from './anthropic.js'
+import { relayChatCompletions } from './chatCompletions.js'
 
 const hopHeaders = new Set(['connection', 'content-length', 'host', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade'])
 
@@ -16,11 +17,12 @@ export function validateUpstream(raw) {
   return url
 }
 
-export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, anthropicUpstreamBaseUrl, anthropicApiKey, fetchUpstream = fetch, analyzeCodexRequest, analyzeClaudeMessagesRequest } = {}) {
-  if (!upstreamBaseUrl && !anthropicUpstreamBaseUrl) throw new Error('Configure at least one proxy upstream')
+export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, anthropicUpstreamBaseUrl, anthropicApiKey, hermesUpstreamBaseUrl, hermesApiKey, fetchUpstream = fetch, analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest } = {}) {
+  if (!upstreamBaseUrl && !anthropicUpstreamBaseUrl && !hermesUpstreamBaseUrl) throw new Error('Configure at least one proxy upstream')
   const upstream = upstreamBaseUrl ? validateUpstream(upstreamBaseUrl) : null
   const anthropicUpstream = anthropicUpstreamBaseUrl ? validateUpstream(anthropicUpstreamBaseUrl) : null
-  for (const target of [upstream, anthropicUpstream].filter(Boolean)) {
+  const hermesUpstream = hermesUpstreamBaseUrl ? validateUpstream(hermesUpstreamBaseUrl) : null
+  for (const target of [upstream, anthropicUpstream, hermesUpstream].filter(Boolean)) {
     if (['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname) && Number(target.port) === port) throw new Error('Proxy upstream cannot point back to CheatingKit')
   }
   const server = Bun.serve({
@@ -29,6 +31,7 @@ export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, anthro
       const path = new URL(request.url).pathname
       if (path === '/health' && request.method === 'GET') return Response.json({ service: 'cheatingkit-proxy', pid: process.pid, port: server.port })
       if (anthropicUpstream && anthropicPath(path)) return relayAnthropicRequest(request, { upstreamBaseUrl: anthropicUpstream.href, apiKey: anthropicApiKey, fetchUpstream, analyzeMessagesRequest: analyzeClaudeMessagesRequest })
+      if (hermesUpstream && path === '/v1/chat/completions' && request.method === 'POST') return relayChatCompletions(request, { upstreamBaseUrl: hermesUpstream.href, apiKey: hermesApiKey, fetchUpstream, analyzeHermesRequest })
       if (!upstream || path !== '/v1/responses' || request.method !== 'POST') return new Response('Not found', { status: 404 })
       const target = new URL('responses', `${upstream.href}/`)
       try {

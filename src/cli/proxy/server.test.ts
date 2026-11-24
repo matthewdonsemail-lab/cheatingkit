@@ -1,5 +1,30 @@
 import { test, expect } from 'bun:test'
 import { createProxyServer, validateUpstream } from './server.js'
+import { createHermesAnalysis } from './hermesAnalysis.js'
+
+test('Hermes request is analyzed, forwarded with task fields intact, and streamed back in Chat Completions format', async () => {
+  let analysisBody: any
+  let taskBody: any
+  const analysis = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
+    analysisBody = await request.json()
+    return Response.json({ output_text: 'Explain the result clearly.' })
+  } })
+  const task = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
+    taskBody = await request.json()
+    return new Response('data: {"choices":[{"delta":{"content":"Done"}}]}\n\ndata: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } })
+  } })
+  const analyzeHermesRequest = createHermesAnalysis({ mode: 'apply', model: 'analysis-model', upstreamBaseUrl: `http://127.0.0.1:${analysis.port}/v1`, proxyPort: 0, contextForPrompt: async () => 'Corpus evidence' })
+  const proxy = createProxyServer({ port: 0, hermesUpstreamBaseUrl: `http://127.0.0.1:${task.port}/v1`, analyzeHermesRequest })
+  try {
+    const body = { model: 'task-model', messages: [{ role: 'user', content: 'Prior task' }, { role: 'assistant', content: 'Prior response' }, { role: 'user', content: 'Explain result' }], tools: [{ type: 'function', function: { name: 'work' } }], stream: true }
+    const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    expect(analysisBody.input).toContain('user: Prior task')
+    expect(analysisBody.input).toContain('assistant: Prior response')
+    expect(taskBody).toEqual({ ...body, messages: [...body.messages.slice(0, -1), { role: 'user', content: 'Explain the result clearly.' }] })
+    expect(response.headers.get('content-type')).toBe('text/event-stream')
+    expect(await response.text()).toContain('data: [DONE]')
+  } finally { proxy.stop(true); analysis.stop(true); task.stop(true) }
+})
 
 test('relays a Codex Responses request and provider response without changing fields', async () => {
   let received: { path: string, authorization: string | null, body: unknown } | null = null

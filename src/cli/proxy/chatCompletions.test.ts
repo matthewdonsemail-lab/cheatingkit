@@ -21,3 +21,14 @@ test('Hermes chat completion relay forwards provider errors', async () => {
   expect(response.status).toBe(400)
   expect(await response.json()).toEqual({ error: 'bad model' })
 })
+
+test('Hermes relay applies optional request analysis before forwarding', async () => {
+  const request = new Request('http://127.0.0.1:4178/v1/chat/completions', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: 'original' }], stream: true }) })
+  let sent: any
+  const response = await relayChatCompletions(request, { upstreamBaseUrl: 'https://provider.example/v1',
+    analyzeHermesRequest: async (raw: string) => ({ body: raw.replace('original', 'proposed'), decision: { applied: true } }),
+    fetchUpstream: async (_url, init) => { sent = JSON.parse(await new Response(init!.body).text()); return Response.json({ ok: true }) },
+  })
+  expect(response.status).toBe(200)
+  expect(sent).toEqual({ messages: [{ role: 'user', content: 'proposed' }], stream: true })
+})
