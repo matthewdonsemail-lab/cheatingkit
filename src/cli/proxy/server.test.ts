@@ -59,3 +59,21 @@ test('provider key replaces the harness credential without changing the request 
     expect(received).toEqual({ authorization: 'Bearer provider-key', body })
   } finally { proxy.stop(true); upstream.stop(true) }
 })
+
+test('cancelling the client request aborts the upstream request', async () => {
+  let upstreamSignal: AbortSignal | null = null
+  const proxy = createProxyServer({ port: 0, upstreamBaseUrl: 'https://api.openai.com/v1', fetchUpstream: (_target, init) => {
+    upstreamSignal = init.signal as AbortSignal
+    return new Promise((_resolve, reject) => upstreamSignal!.addEventListener('abort', () => reject(new Error('cancelled')), { once: true }))
+  } })
+  try {
+    const controller = new AbortController()
+    const pending = fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, { method: 'POST', body: '{}', signal: controller.signal })
+    for (let attempt = 0; attempt < 50 && !upstreamSignal; attempt++) await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(upstreamSignal).not.toBeNull()
+    controller.abort()
+    await expect(pending).rejects.toThrow()
+    for (let attempt = 0; attempt < 50 && !upstreamSignal!.aborted; attempt++) await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(upstreamSignal!.aborted).toBe(true)
+  } finally { proxy.stop(true) }
+})

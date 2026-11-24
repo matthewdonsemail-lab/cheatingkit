@@ -23,6 +23,15 @@ test('starts one detached proxy, reports health, and stops it', async () => {
     expect((await (await fetch(`http://127.0.0.1:${port}/health`)).json()).pid).toBe(pid)
     const again = run('start', '--port', String(port), '--upstream', `http://127.0.0.1:${upstream.port}/v1`)
     expect(JSON.parse(again.stdout).reused).toBe(true)
+    process.kill(pid)
+    for (let attempt = 0; attempt < 50; attempt++) {
+      try { await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(100) }) }
+      catch { break }
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+    const restarted = run('start', '--port', String(port), '--upstream', `http://127.0.0.1:${upstream.port}/v1`)
+    expect(restarted.status).toBe(0)
+    expect(JSON.parse(readFileSync(join(home, 'proxy.json'), 'utf8')).pid).not.toBe(pid)
     const response = await fetch(`http://127.0.0.1:${port}/v1/responses`, { method: 'POST', body: '{}' })
     expect((await response.json()).id).toBe('mock')
     expect(JSON.parse(run('status').stdout).running).toBe(true)

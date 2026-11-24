@@ -121,7 +121,11 @@ export async function runProxyCommand(args) {
   if (action === 'stop') {
     const state = readState()
     const live = state && await health(state.port)
-    if (state && live?.pid === state.pid) process.kill(state.pid)
+    if (state && live?.pid === state.pid) {
+      process.kill(state.pid)
+      for (let attempt = 0; attempt < 40 && await health(state.port); attempt++) await new Promise((resolve) => setTimeout(resolve, 50))
+      if (await health(state.port)) throw new Error('Proxy did not stop; inspect its process before restarting')
+    }
     if (existsSync(statePath())) rmSync(statePath(), { force: true })
     console.log(JSON.stringify({ stopped: Boolean(live) }))
     return
