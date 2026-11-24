@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createProxyServer, validateUpstream } from './server.js'
 import { installCodexRoute, removeCodexRouteFromDisk } from './codex.js'
+import { installClaudeRoute, removeClaudeRouteFromDisk } from './claude.js'
+import { loadAnthropicProfile, saveAnthropicProfile } from './anthropicProvider.js'
 import { installedVersion } from '../updates/client.js'
 import { loadProfile, saveProfile } from './provider.js'
 import { loadAnalysisProfile, saveAnalysisProfile } from './analysisProfile.js'
@@ -42,12 +44,27 @@ function option(args, name, fallback) {
 function route(args) {
   const profile = loadProfile()
   const upstream = option(args, '--upstream', process.env.CHEATINGKIT_PROXY_UPSTREAM || profile?.upstreamBaseUrl)
-  if (!upstream) throw new Error('Run ck proxy setup or pass --upstream <provider /v1 URL>')
+  if (!upstream) return null
   validateUpstream(upstream)
   const apiKeyEnv = option(args, '--api-key-env', profile?.upstreamBaseUrl === upstream ? profile.apiKeyEnv : undefined)
   const keyless = args.includes('--keyless') || (apiKeyEnv === null && profile?.upstreamBaseUrl === upstream)
   if (apiKeyEnv && !process.env[apiKeyEnv]) throw new Error(`Set ${apiKeyEnv} in the environment before starting the proxy`)
   return { upstream, apiKeyEnv, keyless, model: profile?.upstreamBaseUrl === upstream ? profile.model : null }
+}
+
+function routes(args) {
+  const responses = route(args)
+  const anthropic = loadAnthropicProfile()
+  if (!responses && !anthropic) throw new Error('Run ck proxy setup, ck proxy setup claude, or pass --upstream <provider /v1 URL>')
+  if (anthropic && !process.env[anthropic.apiKeyEnv]) throw new Error(`Set ${anthropic.apiKeyEnv} in the environment before starting the proxy`)
+  return { responses, anthropic }
+}
+
+async function configureAnthropicInteractively() {
+  const apiKeyEnv = await clack.text({ message: 'Environment variable containing the Anthropic API key', initialValue: 'ANTHROPIC_API_KEY', validate: (value) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(value || '') ? undefined : 'Enter an environment variable name' })
+  if (clack.isCancel(apiKeyEnv)) { clack.cancel('Proxy setup stopped'); return null }
+  if (!process.env[apiKeyEnv]) throw new Error(`Set ${apiKeyEnv} in this terminal before running proxy setup`)
+  return saveAnthropicProfile({ upstreamBaseUrl: 'https://api.anthropic.com/v1', apiKeyEnv })
 }
 
 async function configureInteractively() {
@@ -95,22 +112,23 @@ export async function runProxyCommand(args) {
     return
   }
   if (action === 'setup') {
-    if (existsSync(join(root(), 'proxy-codex.json'))) throw new Error('Remove the current Codex proxy route before choosing a new provider')
+    const harness = args[1] === 'claude' ? 'claude' : 'codex'
+    if (existsSync(join(root(), `proxy-${harness}.json`))) throw new Error(`Remove the current ${harness} proxy route before choosing a new provider`)
     clack.intro('CheatingKit provider proxy setup')
-    const profile = await configureInteractively()
+    const profile = harness === 'claude' ? await configureAnthropicInteractively() : await configureInteractively()
     if (!profile) return
-    clack.log.success(`Saved ${profile.provider} / ${profile.model}. No API key was stored.`)
-    await runProxyCommand(['install', 'codex', ...args.slice(1)])
-    clack.outro('Restart Codex to use the selected model through CheatingKit.')
+    clack.log.success(`Saved ${harness === 'claude' ? 'Anthropic Messages' : `${profile.provider} / ${profile.model}`}. No API key was stored.`)
+    await runProxyCommand(['install', harness, ...args.slice(harness === 'claude' ? 2 : 1)])
+    clack.outro(`Restart ${harness === 'claude' ? 'Claude Code' : 'Codex'} to use CheatingKit.`)
     return
   }
   const port = Number(option(args, '--port', process.env.CHEATINGKIT_PROXY_PORT || 4178))
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Proxy port must be between 1 and 65535')
   if (action === 'serve') {
-    const { upstream, apiKeyEnv, keyless } = route(args)
+    const { responses, anthropic } = routes(args)
     const analysis = loadAnalysisProfile()
-    if (analysis.apiKeyEnv && !process.env[analysis.apiKeyEnv]) throw new Error(`Set ${analysis.apiKeyEnv} before starting the proxy`)
-    const analyzeCodexRequest = analysis.mode === 'off' ? undefined : createCodexAnalysis({ ...analysis, proxyPort: port, apiKey: analysis.apiKeyEnv ? process.env[analysis.apiKeyEnv] : undefined,
+    if (responses && analysis.apiKeyEnv && !process.env[analysis.apiKeyEnv]) throw new Error(`Set ${analysis.apiKeyEnv} before starting the proxy`)
+    const analyzeCodexRequest = !responses || analysis.mode === 'off' ? undefined : createCodexAnalysis({ ...analysis, proxyPort: port, apiKey: analysis.apiKeyEnv ? process.env[analysis.apiKeyEnv] : undefined,
       onDecision: (decision) => {
         const path = join(root(), 'proxy-analysis-last.json')
         const temp = `${path}.${process.pid}.tmp`
@@ -118,8 +136,8 @@ export async function runProxyCommand(args) {
         renameSync(temp, path)
       },
     })
-    const server = createProxyServer({ port, upstreamBaseUrl: upstream, apiKey: apiKeyEnv ? process.env[apiKeyEnv] : keyless ? '' : undefined, analyzeCodexRequest })
-    writeState({ pid: process.pid, port: server.port, startedAt: new Date().toISOString(), version: installedVersion().version, upstreamBaseUrl: upstream, apiKeyEnv: apiKeyEnv || null })
+    const server = createProxyServer({ port, upstreamBaseUrl: responses?.upstream, apiKey: responses?.apiKeyEnv ? process.env[responses.apiKeyEnv] : responses?.keyless ? '' : undefined, anthropicUpstreamBaseUrl: anthropic?.upstreamBaseUrl, anthropicApiKey: anthropic ? process.env[anthropic.apiKeyEnv] : undefined, analyzeCodexRequest })
+    writeState({ pid: process.pid, port: server.port, startedAt: new Date().toISOString(), version: installedVersion().version, upstreamBaseUrl: responses?.upstream || null, apiKeyEnv: responses?.apiKeyEnv || null, anthropicUpstreamBaseUrl: anthropic?.upstreamBaseUrl || null, anthropicApiKeyEnv: anthropic?.apiKeyEnv || null })
     console.log(`CheatingKit proxy listening on http://127.0.0.1:${server.port}/v1`)
     const close = () => { server.stop(true); if (readState()?.pid === process.pid) rmSync(statePath(), { force: true }); process.exit(0) }
     process.on('SIGTERM', close)
@@ -133,11 +151,14 @@ export async function runProxyCommand(args) {
     return
   }
   if (action === 'start') {
-    const { upstream, apiKeyEnv, keyless } = route(args)
+    const { responses, anthropic } = routes(args)
+    const upstream = responses?.upstream || null
+    const apiKeyEnv = responses?.apiKeyEnv || null
+    const keyless = responses?.keyless || false
     const state = readState()
     const live = state && await health(state.port)
     if (state && live?.pid === state.pid) {
-      if (state.port !== port || state.upstreamBaseUrl !== upstream || (state.apiKeyEnv || null) !== (apiKeyEnv || null)) throw new Error('Proxy is already running with different port or provider; stop it before changing the route')
+      if (state.port !== port || state.upstreamBaseUrl !== upstream || (state.apiKeyEnv || null) !== (apiKeyEnv || null) || (state.anthropicUpstreamBaseUrl || null) !== (anthropic?.upstreamBaseUrl || null) || (state.anthropicApiKeyEnv || null) !== (anthropic?.apiKeyEnv || null)) throw new Error('Proxy is already running with different port or provider; stop it before changing the route')
       console.log(JSON.stringify({ running: true, reused: true, ...state })); return
     }
     if (await health(port)) throw new Error(`A CheatingKit proxy is already listening on port ${port} without matching state`)
@@ -146,7 +167,7 @@ export async function runProxyCommand(args) {
     if (existsSync(logPath) && statSync(logPath).size > 1024 * 1024) renameSync(logPath, `${logPath}.1`)
     const log = openSync(logPath, 'a')
     let child
-    try { child = spawn(process.execPath, [entry, 'proxy', 'serve', '--port', String(port), '--upstream', upstream, ...(apiKeyEnv ? ['--api-key-env', apiKeyEnv] : keyless ? ['--keyless'] : [])], { detached: true, windowsHide: true, stdio: ['ignore', log, log], env: process.env }) }
+    try { child = spawn(process.execPath, [entry, 'proxy', 'serve', '--port', String(port), ...(upstream ? ['--upstream', upstream] : []), ...(apiKeyEnv ? ['--api-key-env', apiKeyEnv] : keyless ? ['--keyless'] : [])], { detached: true, windowsHide: true, stdio: ['ignore', log, log], env: process.env }) }
     finally { closeSync(log) }
     child.unref()
     for (let attempt = 0; attempt < 40; attempt++) {
@@ -169,16 +190,21 @@ export async function runProxyCommand(args) {
     return
   }
   if (action === 'install') {
-    if (args[1] !== 'codex') throw new Error('Only the Codex proxy route is implemented')
-    const { upstream, model } = route(args)
-    await runProxyCommand(['start', '--port', String(port), '--upstream', upstream])
-    console.log(JSON.stringify(installCodexRoute(`http://127.0.0.1:${port}/v1`, model)))
+    if (!['codex', 'claude'].includes(args[1])) throw new Error('Use ck proxy install codex|claude')
+    const responses = route(args)
+    if (args[1] === 'codex' && !responses) throw new Error('Configure a Responses provider before installing the Codex route')
+    const anthropic = loadAnthropicProfile()
+    if (args[1] === 'claude' && !anthropic) throw new Error('Run ck proxy setup claude before installing the Claude Code route')
+    const current = readState()
+    if (current && ((current.upstreamBaseUrl || null) !== (responses?.upstream || null) || (current.anthropicUpstreamBaseUrl || null) !== (anthropic?.upstreamBaseUrl || null) || (current.anthropicApiKeyEnv || null) !== (anthropic?.apiKeyEnv || null))) await runProxyCommand(['stop'])
+    await runProxyCommand(['start', '--port', String(port), ...(responses ? ['--upstream', responses.upstream] : [])])
+    console.log(JSON.stringify(args[1] === 'claude' ? installClaudeRoute(`http://127.0.0.1:${port}`) : installCodexRoute(`http://127.0.0.1:${port}/v1`, responses.model)))
     return
   }
   if (action === 'remove') {
-    if (args[1] !== 'codex') throw new Error('Only the Codex proxy route is implemented')
-    console.log(JSON.stringify(removeCodexRouteFromDisk()))
+    if (!['codex', 'claude'].includes(args[1])) throw new Error('Use ck proxy remove codex|claude')
+    console.log(JSON.stringify(args[1] === 'claude' ? removeClaudeRouteFromDisk() : removeCodexRouteFromDisk()))
     return
   }
-  throw new Error('Use ck proxy setup|start|status|stop|serve|install codex|remove codex|analysis setup|status|last|off')
+  throw new Error('Use ck proxy setup [claude]|start|status|stop|serve|install codex|claude|remove codex|claude|analysis setup|status|last|off')
 }

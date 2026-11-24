@@ -40,8 +40,10 @@ ck timeline
 | `ck context --prompt "..."` | Preview the context a prompt would receive. |
 | `ck hooks install` / `ck hooks remove` | Add or remove CheatingKit's prompt integrations. |
 | `ck proxy setup` | Choose a Responses provider and model in an interactive setup, then connect Codex. |
-| `ck proxy start` / `ck proxy status` / `ck proxy stop` | Run and inspect the local Codex Responses relay. |
+| `ck proxy setup claude` | Connect Claude Code to the local Anthropic Messages relay using an Anthropic API key from an environment variable. |
+| `ck proxy start` / `ck proxy status` / `ck proxy stop` | Run and inspect the local provider relay. |
 | `ck proxy install codex` / `ck proxy remove codex` | Route Codex through the local relay and restore its prior setting. |
+| `ck proxy install claude` / `ck proxy remove claude` | Route Claude Code through the local relay and restore its prior setting. |
 | `ck mcp` | Serve the same local context through MCP. |
 | `ck sessions` | List imported sessions and their current model. |
 | `ck timeline` | Inspect recorded session events and model changes. |
@@ -62,7 +64,11 @@ ck proxy remove codex
 ck proxy stop
 ```
 
-Set the chosen key environment variable before `ck proxy setup` and keep it available when starting the proxy again. The installer starts a detached loopback server, adds a dedicated `cheatingkit` model provider and selected model to Codex's configuration, and records the previous values for restoration. The local provider disables WebSockets because this route serves HTTP Responses requests and SSE streams. Restart Codex after installing or removing the route. The upstream provider must implement `/v1/responses` for both normal and streaming requests. Providers that only expose Chat Completions, Anthropic Messages, or Gemini APIs need separate translation adapters and are not yet selectable. The proxy does not yet analyze or rewrite messages; [issue #10](https://github.com/matthewdonsemail-lab/cheatingkit/issues/10) tracks those stages.
+Set the chosen key environment variable before `ck proxy setup` and keep it available when starting the proxy again. The installer starts a detached loopback server, adds a dedicated `cheatingkit` model provider and selected model to Codex's configuration, and records the previous values for restoration. The local provider disables WebSockets because this route serves HTTP Responses requests and SSE streams. Restart Codex after installing or removing the route. The upstream provider must implement `/v1/responses` for both normal and streaming requests. Providers that only expose Chat Completions or Gemini APIs need separate translation adapters and are not yet selectable. Optional corpus-backed analysis for Codex Responses requests is configured with `ck proxy analysis setup`; [issue #10](https://github.com/matthewdonsemail-lab/cheatingkit/issues/10) tracks additional adapters.
+
+### Claude Code provider proxy preview
+
+Set `ANTHROPIC_API_KEY` in the terminal that runs CheatingKit, then run `ck proxy setup claude`. This stores the environment variable name in a separate Anthropic profile, starts the local server, and sets `env.ANTHROPIC_BASE_URL` in Claude Code's user settings. Restart Claude Code. Requests to `/v1/messages` and `/v1/messages/count_tokens` are relayed unchanged to `https://api.anthropic.com/v1`, including system instructions, conversation turns, tools, images, and streaming events. The proxy substitutes the provider key, relays HTTP errors, and cancels upstream work when the client disconnects. `ck proxy remove claude` restores the prior setting; `ck proxy stop` stops the server. The Anthropic and Codex routes have separate provider settings and can share the local server. Codex's analysis stage is not applied to Claude Code Messages requests. This route does not translate Codex Responses requests into Anthropic Messages.
 
 ## Updates
 

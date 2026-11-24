@@ -1,3 +1,5 @@
+import { anthropicPath, relayAnthropicRequest } from './anthropic.js'
+
 const hopHeaders = new Set(['connection', 'content-length', 'host', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade'])
 
 function relayHeaders(source) {
@@ -14,15 +16,20 @@ export function validateUpstream(raw) {
   return url
 }
 
-export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, fetchUpstream = fetch, analyzeCodexRequest } = {}) {
-  const upstream = validateUpstream(upstreamBaseUrl)
-  if (['127.0.0.1', 'localhost', '[::1]'].includes(upstream.hostname) && Number(upstream.port) === port) throw new Error('Proxy upstream cannot point back to CheatingKit')
+export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, anthropicUpstreamBaseUrl, anthropicApiKey, fetchUpstream = fetch, analyzeCodexRequest } = {}) {
+  if (!upstreamBaseUrl && !anthropicUpstreamBaseUrl) throw new Error('Configure at least one proxy upstream')
+  const upstream = upstreamBaseUrl ? validateUpstream(upstreamBaseUrl) : null
+  const anthropicUpstream = anthropicUpstreamBaseUrl ? validateUpstream(anthropicUpstreamBaseUrl) : null
+  for (const target of [upstream, anthropicUpstream].filter(Boolean)) {
+    if (['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname) && Number(target.port) === port) throw new Error('Proxy upstream cannot point back to CheatingKit')
+  }
   const server = Bun.serve({
     hostname: '127.0.0.1', port,
     async fetch(request) {
       const path = new URL(request.url).pathname
       if (path === '/health' && request.method === 'GET') return Response.json({ service: 'cheatingkit-proxy', pid: process.pid, port: server.port })
-      if (path !== '/v1/responses' || request.method !== 'POST') return new Response('Not found', { status: 404 })
+      if (anthropicUpstream && anthropicPath(path)) return relayAnthropicRequest(request, { upstreamBaseUrl: anthropicUpstream.href, apiKey: anthropicApiKey, fetchUpstream })
+      if (!upstream || path !== '/v1/responses' || request.method !== 'POST') return new Response('Not found', { status: 404 })
       const target = new URL('responses', `${upstream.href}/`)
       try {
         const headers = relayHeaders(request.headers)
