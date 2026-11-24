@@ -15,6 +15,8 @@ import { loadAnalysisProfile, saveAnalysisProfile } from './analysisProfile.js'
 import { createCodexAnalysis } from './analysis.js'
 import { createClaudeMessagesAnalysis } from './claudeAnalysis.js'
 import { createHermesAnalysis } from './hermesAnalysis.js'
+import { runHarness } from './runner.js'
+import { installStartup, removeStartup, startupStatus } from './startup.js'
 import * as clack from '@clack/prompts'
 
 const root = () => process.env.CHEATINGKIT_HOME || join(homedir(), '.cheatingkit')
@@ -141,6 +143,26 @@ export async function runProxyCommand(args) {
   }
   const port = Number(option(args, '--port', process.env.CHEATINGKIT_PROXY_PORT || 4178))
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Proxy port must be between 1 and 65535')
+  if (action === 'startup') {
+    if (args[1] === 'status') { console.log(JSON.stringify(startupStatus())); return }
+    if (args[1] === 'remove') { console.log(JSON.stringify(removeStartup())); return }
+    if (args[1] !== 'install') throw new Error('Use ck proxy startup install|status|remove')
+    if (!['codex', 'claude', 'hermes'].some((harness) => existsSync(join(root(), `proxy-${harness}.json`)))) throw new Error('Install at least one harness route before enabling login startup')
+    routes(args)
+    console.log(JSON.stringify(installStartup({ bunPath: process.execPath, entryPath: entry, port })))
+    return
+  }
+  if (action === 'run') {
+    const harness = args[1]
+    if (!['codex', 'claude', 'hermes'].includes(harness)) throw new Error('Use ck proxy run codex|claude|hermes -- [harness arguments]')
+    if (!existsSync(join(root(), `proxy-${harness}.json`))) throw new Error(`Run ck proxy install ${harness} before launching ${harness}`)
+    const separator = args.indexOf('--')
+    const command = option(args.slice(0, separator < 0 ? args.length : separator), '--command', harness)
+    const harnessArgs = separator < 0 ? [] : args.slice(separator + 1)
+    const result = await runHarness(harness, harnessArgs, { command, ensureProxy: () => runProxyCommand(['start', '--port', String(port), '--quiet']) })
+    process.exitCode = result.code
+    return
+  }
   if (action === 'serve') {
     const { responses, anthropic, hermes } = routes(args)
     const analysis = loadAnalysisProfile()
@@ -178,7 +200,7 @@ export async function runProxyCommand(args) {
     const live = state && await health(state.port)
     if (state && live?.pid === state.pid) {
       if (state.port !== port || state.upstreamBaseUrl !== upstream || (state.apiKeyEnv || null) !== (apiKeyEnv || null) || (state.anthropicUpstreamBaseUrl || null) !== (anthropic?.upstreamBaseUrl || null) || (state.anthropicApiKeyEnv || null) !== (anthropic?.apiKeyEnv || null) || (state.hermesUpstreamBaseUrl || null) !== (hermes?.upstreamBaseUrl || null) || (state.hermesApiKeyEnv || null) !== (hermes?.apiKeyEnv || null)) throw new Error('Proxy is already running with different port or provider; stop it before changing the route')
-      console.log(JSON.stringify({ running: true, reused: true, ...state })); return
+      if (!args.includes('--quiet')) console.log(JSON.stringify({ running: true, reused: true, ...state })); return
     }
     if (await health(port)) throw new Error(`A CheatingKit proxy is already listening on port ${port} without matching state`)
     mkdirSync(root(), { recursive: true })
@@ -192,7 +214,7 @@ export async function runProxyCommand(args) {
     for (let attempt = 0; attempt < 40; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 100))
       const current = await health(port)
-      if (current?.pid === child.pid) { console.log(JSON.stringify({ running: true, pid: child.pid, port })); return }
+      if (current?.pid === child.pid) { if (!args.includes('--quiet')) console.log(JSON.stringify({ running: true, pid: child.pid, port })); return }
     }
     throw new Error(`Proxy did not become healthy; inspect ${join(root(), 'proxy.log')}`)
   }
@@ -227,5 +249,5 @@ export async function runProxyCommand(args) {
     console.log(JSON.stringify(args[1] === 'claude' ? removeClaudeRouteFromDisk() : args[1] === 'hermes' ? removeHermesRouteFromDisk() : removeCodexRouteFromDisk()))
     return
   }
-  throw new Error('Use ck proxy setup [claude|hermes]|start|status|stop|serve|install codex|claude|hermes|remove codex|claude|hermes|analysis setup|status|last|off')
+  throw new Error('Use ck proxy setup [claude|hermes]|start|status|stop|run codex|claude|hermes|startup install|status|remove|serve|install codex|claude|hermes|remove codex|claude|hermes|analysis setup|status|last|off')
 }

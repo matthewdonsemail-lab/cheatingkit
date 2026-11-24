@@ -43,6 +43,8 @@ ck timeline
 | `ck proxy setup claude` | Connect Claude Code to the local Anthropic Messages relay using an Anthropic API key from an environment variable. |
 | `ck proxy setup hermes` | Choose a Chat Completions provider and model, then connect Hermes to the local relay. |
 | `ck proxy start` / `ck proxy status` / `ck proxy stop` | Run and inspect the local provider relay. |
+| `ck proxy run codex|claude|hermes -- [args]` | Ensure the relay is healthy, then launch the selected installed harness. |
+| `ck proxy startup install|status|remove` | Opt in to a reversible Windows login launcher for the relay. |
 | `ck proxy install codex` / `ck proxy remove codex` | Route Codex through the local relay and restore its prior setting. |
 | `ck proxy install claude` / `ck proxy remove claude` | Route Claude Code through the local relay and restore its prior setting. |
 | `ck proxy install hermes` / `ck proxy remove hermes` | Route Hermes through the local relay and restore its prior model settings. |
@@ -77,6 +79,12 @@ Set `ANTHROPIC_API_KEY` in the terminal that runs CheatingKit, then run `ck prox
 Run `ck proxy setup hermes` to select a provider that implements OpenAI Chat Completions at `/v1/chat/completions`, its model ID, and an API key environment variable (blank for a keyless local endpoint). CheatingKit stores a separate Hermes provider profile and changes Hermes's `model.provider`, `model.default`, `model.base_url`, and `model.api_mode` to use the loopback server. Restart Hermes. The route relays its conversation, tool definitions, HTTP errors, and streaming response in Chat Completions format. `ck proxy remove hermes` restores those previous model settings while preserving unrelated config edits. This route can run alone or beside Codex and Claude Code routes. It does not translate a Chat Completions request into Responses or Anthropic Messages.
 
 `ck proxy analysis setup` configures one optional separate Responses-compatible analysis model for the local routes. Analysis is off by default. When enabled, it receives the latest eligible plain user message, bounded plain-text conversation history, and source-linked local corpus evidence; tool and media payloads are excluded from the analysis input. `suggest` records proposed wording and forwards the original request. `apply` changes only the latest eligible user text before the task provider request. The task provider, previous turns, tools, and stream setting remain in place. An analysis failure forwards the original request. Claude token-count requests and multipart Hermes user messages remain unchanged. Use `ck proxy analysis last` to inspect the latest decision. Restart the proxy after changing analysis settings.
+
+### Proxy startup and recovery
+
+After installing a harness route, use `ck proxy run codex -- [Codex arguments]` (or `claude` or `hermes`) to launch it. The command checks the loopback service before launching the harness, reuses a healthy instance, and starts a new instance when the saved process is stale. If startup fails, it reports the local proxy log path and does not launch the harness. It passes the harness exit code through. A proxy crash during an active model request can still fail that request; launch the harness again with `ck proxy run` to recover.
+
+On Windows, `ck proxy startup install` adds an opt-in launcher to your user Startup folder so the proxy starts at login. `ck proxy startup status` checks it; `ck proxy startup remove` removes the unchanged launcher. The launcher runs the currently installed CheatingKit and Bun paths, so reinstall it if either path changes. Provider API key environment variables must be available in the login environment. On macOS and Linux, use `ck proxy run` or your own login service; automatic login startup is not installed by this command. `ck proxy stop` stops the current process but leaves an installed login launcher in place.
 
 ## Updates
 

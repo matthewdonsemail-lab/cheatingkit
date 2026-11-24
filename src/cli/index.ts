@@ -24,7 +24,7 @@ async function updateNotice(config) {
 
 const run = Effect.gen(function* () {
   if (command === 'help' || command === '--help') {
-    console.log('ck setup | detect | ingest | index | context --prompt TEXT | hooks install|remove | proxy setup [claude|hermes]|start|status|stop|install codex|claude|hermes|remove codex|claude|hermes|analysis setup|status|last|off | mcp | label | sessions | timeline | areas | leadups | version | updates | update [--track stable|nightly] [--apply]')
+    console.log('ck setup | detect | ingest | index | context --prompt TEXT | hooks install|remove | proxy setup [claude|hermes]|start|status|stop|run codex|claude|hermes -- [args]|startup install|status|remove|install codex|claude|hermes|remove codex|claude|hermes|analysis setup|status|last|off | mcp | label | sessions | timeline | areas | leadups | version | updates | update [--track stable|nightly] [--apply]')
     return
   }
   if (command === 'version' || command === '--version' || command === '-v') {
