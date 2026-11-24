@@ -1,0 +1,8 @@
+{
+  "cwd": "C:\\Users\\0\\AppData\\Local\\Temp\\ck-restart-check-DBYt5X",
+  "taskId": "078b4fde-0ad6-4ade-a4dd-4e2d48ce9db5",
+  "first": 0,
+  "second": 0,
+  "content": "RESTART_OK",
+  "secondTail": "code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_3\",\"type\":\"agent_message\",\"text\":\"Created `notes.txt` containing exactly `RESTART_OK`, with no newline. Verified all 10 bytes. Only `notes.txt` was edited.\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":73961,\"cached_input_tokens\":45970,\"cache_write_input_tokens\":27928,\"output_tokens\":283,\"reasoning_output_tokens\":0}}\n"
+}
