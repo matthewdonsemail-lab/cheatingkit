@@ -163,3 +163,24 @@ test('enforced apply mode never forwards the original when the rewrite provider 
     expect(attempt.analysisApplied).toBe(false)
   } finally { proxy.stop(true); store.close() }
 })
+
+
+test('revision and task provider retain the same reviewed project context and request envelope', async () => {
+  const shared = { cwd: 'C:/project', hookEvidence: 'Gate installed; historical single-pass report is stale.', evidence: '[codex/current#1] Implement remaining context fix, keep PR draft.' }
+  const seen = []
+  const gate = createMessageGate({ mode: 'enforce', contextForPrompt: async () => { throw new Error('must reuse analysis evidence') }, evaluate: async (stage, data) => {
+    seen.push(data)
+    if (stage === 'scope') return { decision: 'allow', reason: 'local implementation' }
+    if (stage === 'revise') return { proposedText: 'Implement the remaining context fix.', reason: 'restore action' }
+    return { faithful: data.proposedText.startsWith('Implement'), reason: 'retain implementation objective' }
+  } })
+  const original = { model: 'task', input: [{ role: 'user', content: 'Implement the remaining context fix.' }], tools: [{ type: 'function', name: 'read_file' }], stream: true }
+  const result = await gate(JSON.stringify(original), { protocol: 'responses', proposedText: 'Specify the context fix.', analysisContext: shared })
+  expect(seen).toHaveLength(5)
+  for (const data of seen) { expect(data.harnessContext).toEqual(shared); expect(data.evidence).toBe(shared.evidence) }
+  const forwarded = JSON.parse(result.body)
+  expect(forwarded.tools).toEqual(original.tools)
+  expect(forwarded.input.at(-1).content).toBe('Implement the remaining context fix.')
+  expect(forwarded.input[0].content[0].text).toContain(shared.evidence)
+  expect(result.record.forwardedRequest).toBe(result.body)
+})

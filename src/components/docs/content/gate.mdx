@@ -20,11 +20,11 @@ The gate returns `allow`, `block`, or `needs_clarification` before the provider 
 
 ## Revisions
 
-When validation finds that a rewrite lost fidelity, the gate can request a bounded revision — at most two — to restore the original goal and constraints or clarify wording. Revisions exist to preserve meaning, not to influence what the provider will decide. If fidelity is still unresolved after the limit, the gate blocks.
+When validation finds that a rewrite lost fidelity, the gate can request a bounded revision â€” at most two â€” to restore the original goal and constraints or clarify wording. Revisions exist to preserve meaning, not to influence what the provider will decide. If fidelity is still unresolved after the limit, the gate blocks.
 
 ## Records
 
-Every decision is linked to the request's attempt record as `gateDecision`. It contains the original request body, the original and proposed text, the retrieved evidence and its source IDs, each scope and validation result, every revision, and the termination reason. Request bodies are stored locally for this audit; authentication headers never are. Failed provider streams keep their embedded error code and message, with cyber warnings labelled `potential_cyber_warning` and transport failures `stream_error`.
+Every decision is linked to the request's attempt record as `gateDecision`. It contains the original request body, the original and proposed text, the retrieved evidence and its source IDs, each scope and validation result, every revision, and the termination reason. The audit also records the shared rewrite context and exact forwarded request body. For Codex requests with a project directory, retrieval is restricted to that project before ranking; the initial rewriter receives the harness hook evidence, and revisions reuse the same retrieved evidence. Enforce mode carries that reviewed history into the task request as explicitly untrusted data. Historical reports do not establish current repository state: the task assistant must inspect the repository. A validated rewrite is not a task-completion result. Request bodies are stored locally for this audit; authentication headers never are. Failed provider streams keep their embedded error code and message, with cyber warnings labelled `potential_cyber_warning` and transport failures `stream_error`.
 
 ## Rollout
 

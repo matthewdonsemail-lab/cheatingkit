@@ -133,3 +133,21 @@ test('a pasted proxy error payload is never sent to the analysis model', async (
 test('analysis upstream cannot loop back into the same proxy port', () => {
   expect(() => createCodexAnalysis({ mode: 'apply', model: 'm', proxyPort: 4178, upstreamBaseUrl: 'http://localhost:4178/v1' })).toThrow('cannot point back')
 })
+
+
+test('rewrite receives developer hook context and exposes the exact shared evidence for validation', async () => {
+  let sent: any
+  const analyze = createCodexAnalysis({ mode: 'apply', model: 'analysis', upstreamBaseUrl: 'https://analysis.example/v1',
+    contextForPrompt: async () => '[codex/project#1] Gate implementation is on the feature branch.',
+    fetchAnalysis: async (_url, init) => { sent = JSON.parse(init.body as string); return Response.json(proposal) },
+  })
+  const result = await analyze(JSON.stringify({ input: [
+    { role: 'user', content: '<environment_context><cwd>C:\\project</cwd></environment_context>' },
+    { role: 'user', content: 'Implement the remaining context fix; the single pass report was historical.' },
+    { role: 'developer', content: 'CheatingKit local session evidence. The gate is installed; PR remains draft.' },
+  ] }))
+  expect(sent.input).toContain('The gate is installed; PR remains draft.')
+  expect(sent.instructions).toContain('historical report')
+  expect(result.decision.context.cwd).toBe('C:\\project')
+  expect(result.decision.context.evidence).toContain('feature branch')
+})

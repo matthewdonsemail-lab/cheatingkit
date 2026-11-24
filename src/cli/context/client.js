@@ -1,3 +1,5 @@
+function canonicalCwd(value) { return String(value || '').replace(/\\/g, '/').replace(/\/$/, '').replace(/^([A-Z]):/, (_, drive) => drive.toLowerCase() + ':') }
+
 function plain(raw) {
   if (!raw) return ''
   try {
@@ -24,7 +26,7 @@ export async function buildContextPack(db, prompt, options = {}) {
   if (typeof prompt !== 'string' || !prompt.trim()) return ''
   if (!db.prepare("SELECT 1 FROM indexState WHERE stage='search'").get()) return ''
   const { searchSessions } = await import('../search/client.js')
-  const hits = await searchSessions(db, prompt, { limit: 30 }, options.embed)
+  const hits = await searchSessions(db, prompt, { limit: 30, cwd: options.cwd }, options.embed)
   const lookup = db.prepare("SELECT m.harness,m.sessionId,m.sourceId,m.sourcePosition,m.body,m.timestamp,s.cwd FROM messages m JOIN sessions s ON s.harness=m.harness AND s.sessionId=m.sessionId WHERE m.harness=? AND m.sessionId=? AND m.sourceId=? AND m.role='user'")
   const matches = []
   const seenCandidates = new Set()
@@ -33,7 +35,7 @@ export async function buildContextPack(db, prompt, options = {}) {
     if (seenCandidates.has(key)) continue
     seenCandidates.add(key)
     const row = lookup.get(hit.harness, hit.sessionId, id)
-    if (row && (!options.cwd || !row.cwd || row.cwd === options.cwd)) {
+    if (row && (!options.cwd || (row.cwd && canonicalCwd(row.cwd) === canonicalCwd(options.cwd)))) {
       const text = userText(row.body)
       if (text && !(row.harness === options.harness && row.sessionId === options.sessionId && text === prompt)) matches.push({ ...row, text, score: hit.score })
     }

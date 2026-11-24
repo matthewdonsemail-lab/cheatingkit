@@ -39,8 +39,9 @@ export function requestDetails(rawBody, protocol) {
 function eventText(value, protocol) {
   if (!value || typeof value !== 'object') return { text: '', refusal: false, error: null }
   if (protocol === 'responses') {
-    const text = value.type === 'response.output_text.delta' || value.type === 'response.refusal.delta' ? value.delta : value.output_text
-    return { text: typeof text === 'string' ? text : '', refusal: value.type === 'response.refusal.delta', error: value.type === 'response.failed' ? [value.response?.error?.code || value.error?.code, value.response?.error?.message || value.error?.message || 'provider response failed'].filter(Boolean).join(': ') : null }
+    const snapshot = value.type === 'response.completed' ? jsonText(value.response, protocol) : value.type === 'response.output_item.done' ? jsonText({ output: [value.item] }, protocol) : value.type === 'response.output_text.done' ? value.text : value.type === 'response.refusal.done' ? value.refusal : ''
+    const text = value.type === 'response.output_text.delta' || value.type === 'response.refusal.delta' ? value.delta : value.output_text || snapshot
+    return { text: typeof text === 'string' ? text : '', snapshot: Boolean(snapshot), refusal: value.type === 'response.refusal.delta' || value.type === 'response.refusal.done', error: value.type === 'response.failed' ? [value.response?.error?.code || value.error?.code, value.response?.error?.message || value.error?.message || 'provider response failed'].filter(Boolean).join(': ') : null }
   }
   if (protocol === 'messages') {
     const text = value.delta?.type === 'text_delta' ? value.delta.text : ''
@@ -110,6 +111,7 @@ export function observeResponse(response, { store, requestId, protocol }) {
   const decoder = new TextDecoder()
   let excerpt = ''
   let wire = ''
+  let eventName = ''
   let explicitRefusal = false
   let streamError = null
   let providerCompleted = false
@@ -123,14 +125,17 @@ export function observeResponse(response, { store, requestId, protocol }) {
     try { store.finish(requestId, { httpStatus: status, responseCompleted: completed, responseExcerpt: excerpt, observation, error: error || streamError }) } catch { /* audit failure must not change provider response */ }
   }
   const parseSseLine = (line) => {
+    if (line.startsWith('event:')) { eventName = line.slice(6).trim(); return }
+    if (!line.trim()) { eventName = ''; return }
     if (!line.startsWith('data:')) return
     const payload = line.slice(5).trim()
     if (payload === '[DONE]') { providerCompleted = true; return }
     try {
       const value = JSON.parse(payload)
+      if (!value.type && eventName) value.type = eventName
       providerCompleted ||= protocol === 'responses' && value.type === 'response.completed' || protocol === 'messages' && value.type === 'message_stop'
       const event = eventText(value, protocol)
-      excerpt = (excerpt + event.text).slice(0, maxExcerpt)
+      excerpt = (event.snapshot ? (!excerpt || event.text.startsWith(excerpt) ? event.text : excerpt) : excerpt + event.text).slice(0, maxExcerpt)
       explicitRefusal ||= event.refusal
       streamError ||= event.error
     } catch { /* unrecognized provider event */ }
@@ -215,7 +220,7 @@ export async function trackProxyRequest(request, { store, harness, protocol, pro
         if (gate.mode === 'enforce' && analysis?.decision?.mode === 'apply' && !analysis.decision.proposedText) {
           throw new Error(`Rewrite unavailable: ${analysis.decision.reason || 'no validated proposal'}`)
         }
-        result = await gate(rawBody, { protocol, proposedText: analysis?.decision?.proposedText, signal: request.signal })
+        result = await gate(rawBody, { protocol, proposedText: analysis?.decision?.proposedText, analysisContext: analysis?.decision?.context, signal: request.signal })
       } catch (error) {
         result = { body: rawBody, record: { originalRequest: rawBody, originalText: analysis?.decision?.originalText, mode: gate.mode || 'enforce', decision: 'block', terminationReason: `evaluator_error: ${error.message}`, evaluations: [], revisions: [], sourceIds: analysis?.decision?.sourceIds || [] } }
       }

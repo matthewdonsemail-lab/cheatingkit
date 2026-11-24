@@ -105,7 +105,7 @@ export async function searchSessions(db, query, options = {}, embed = localEmbed
   const termQuery = tokens.map((token) => `"${token.replaceAll('"', '')}"`).join(' OR ')
   const keyword = termQuery ? db.prepare('SELECT rowid FROM searchChunksFts WHERE searchChunksFts MATCH ? ORDER BY bm25(searchChunksFts) LIMIT 50').all(termQuery).map((row) => row.rowid) : []
   const rows = db.prepare(`SELECT c.*,s.cwd FROM searchChunks c JOIN sessions s ON s.harness=c.harness AND s.sessionId=c.sessionId
-    WHERE (? IS NULL OR c.harness=?) AND (? IS NULL OR s.cwd=?)`).all(options.harness || null, options.harness || null, options.cwd || null, options.cwd || null)
+    WHERE (? IS NULL OR c.harness=?) AND (? IS NULL OR replace(rtrim(s.cwd, '/'),char(92),'/') = replace(rtrim(?, '/'),char(92),'/') COLLATE NOCASE)`).all(options.harness || null, options.harness || null, options.cwd || null, options.cwd || null)
   const [queryVector] = await embed([query])
   const vector = rows.map((row) => ({ id: row.id, score: cosine(queryVector, new Float32Array(row.vector.buffer.slice(row.vector.byteOffset, row.vector.byteOffset + row.vector.byteLength))) }))
     .filter((item) => item.score >= 0.3).sort((a, b) => b.score - a.score).slice(0, 50)

@@ -135,3 +135,18 @@ test('inspection filters comparable attempts and exposes one request by ID', () 
   inspectAttempts([id], { store: another, output: (text) => one.push(text) })
   expect(JSON.parse(one[0]).requestId).toBe(id)
 })
+
+
+for (const withDelta of [false, true]) test(`native named SSE events capture completed refusal without duplicate text (deltas=${withDelta})`, async () => {
+  const { store, close } = fixture()
+  try {
+    const requestId = store.begin({ harness: 'codex', protocol: 'responses', provider: 'responses' })
+    const text = 'I cannot help with that request.'
+    const wire = (withDelta ? `event: response.output_text.delta\ndata: ${JSON.stringify({ delta: text })}\n\n` : '') +
+      `event: response.output_item.done\ndata: ${JSON.stringify({ item: { content: [{ type: 'output_text', text }] } })}\n\n` +
+      `event: response.completed\ndata: ${JSON.stringify({ response: { output: [{ content: [{ type: 'output_text', text }] }] } })}\n\n`
+    const observed = observeResponse(new Response(wire, { headers: { 'content-type': 'text/event-stream' } }), { store, requestId, protocol: 'responses' })
+    expect(await observed.text()).toBe(wire)
+    expect(store.get(requestId)).toMatchObject({ responseCompleted: true, responseExcerpt: text, observation: 'potential_refusal' })
+  } finally { close() }
+})

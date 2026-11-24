@@ -105,3 +105,23 @@ test('prompt hook stays silent until the semantic index is ready', () => {
     expect(result.stdout.trim()).toBe('')
   } finally { db.close(); try { rmSync(dir, { recursive: true, force: true }) } catch {} }
 }, 60000)
+
+
+test('project retrieval filters before ranking and normalizes Windows cwd separators', async () => {
+  const db = openDatabase(':memory:')
+  try {
+    const putSession = db.prepare('INSERT INTO sessions(harness,sessionId,sourcePath,cwd) VALUES(?,?,?,?)')
+    const put = db.prepare('INSERT INTO messages(harness,sessionId,sourceId,sourcePosition,role,body) VALUES(?,?,?,?,?,?)')
+    for (let i = 0; i < 35; i++) {
+      putSession.run('codex', `other${i}`, `other${i}.jsonl`, 'C:/unrelated')
+      put.run('codex', `other${i}`, 'u', 1, 'user', JSON.stringify('Fix the gate project context unrelated history'))
+    }
+    putSession.run('codex', 'current', 'current.jsonl', 'C:\\Project')
+    put.run('codex', 'current', 'u', 1, 'user', JSON.stringify('Fix the gate project context in this repository'))
+    const embed = async (texts: string[]) => texts.map(() => Float32Array.from([1, 0]))
+    await indexSessions(db, () => {}, embed)
+    const evidence = await buildContextPack(db, 'Fix the gate project context', { cwd: 'C:/Project', embed })
+    expect(evidence).toContain('codex/current#u')
+    expect(evidence).not.toContain('unrelated history')
+  } finally { db.close() }
+})
