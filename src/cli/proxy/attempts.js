@@ -116,12 +116,17 @@ export function observeResponse(response, { store, requestId, protocol }) {
   let streamError = null
   let providerCompleted = false
   let finished = false
+  let receivedBytes = 0
   const record = (completed, error = null) => {
     if (finished) return
     finished = true
     if (providerCompleted && !streamError) { completed = true; error = null }
     const providerWarning = streamError && /cyber|malware|phishing|credential[_ -]theft/i.test(streamError)
     const observation = providerWarning ? 'potential_cyber_warning' : error ? (error === streamError ? 'provider_error' : 'stream_error') : status >= 400 ? 'http_error' : explicitRefusal ? 'observed_refusal' : warningPattern.test(excerpt) && refusalPattern.test(excerpt) ? 'potential_cyber_warning' : refusalPattern.test(excerpt) ? 'potential_refusal' : 'completed'
+    try {
+      const gateRecord = store.get?.(requestId)?.gateDecision
+      if (gateRecord) store.gateDecision(requestId, { ...gateRecord, responseTransport: { contentType: response.headers.get('content-type'), contentEncoding: response.headers.get('content-encoding'), receivedBytes, providerCompleted } })
+    } catch {}
     try { store.finish(requestId, { httpStatus: status, responseCompleted: completed, responseExcerpt: excerpt, observation, error: error || streamError }) } catch { /* audit failure must not change provider response */ }
   }
   const parseSseLine = (line) => {
@@ -153,7 +158,7 @@ export function observeResponse(response, { store, requestId, protocol }) {
           controller.close()
           return
         }
-        controller.enqueue(item.value)
+        receivedBytes += item.value.byteLength
         const text = decoder.decode(item.value, { stream: true })
         if (isStream) {
           wire += text
@@ -161,6 +166,7 @@ export function observeResponse(response, { store, requestId, protocol }) {
           wire = lines.pop().slice(-32_000)
           for (const line of lines) parseSseLine(line)
         } else wire = (wire + text).slice(0, 128_000)
+        controller.enqueue(item.value)
       } catch (error) { record(false, error.message); controller.error(error) }
     },
     async cancel(reason) { record(false, 'response stream cancelled'); await reader.cancel(reason) },
@@ -254,6 +260,10 @@ export async function trackProxyRequest(request, { store, harness, protocol, pro
     const response = await relay(wrappedAnalysis)
     return observeResponse(response, { store, requestId, protocol })
   } catch (error) {
+    try {
+      const gateRecord = store.get?.(requestId)?.gateDecision
+      if (gateRecord) store.gateDecision(requestId, { ...gateRecord, responseTransport: { contentType: response.headers.get('content-type'), contentEncoding: response.headers.get('content-encoding'), receivedBytes, providerCompleted } })
+    } catch {}
     try { store.finish(requestId, { observation: 'relay_error', error: error.message }) } catch {}
     throw error
   }
