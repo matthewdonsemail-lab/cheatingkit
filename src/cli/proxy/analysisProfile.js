@@ -12,7 +12,9 @@ export function validateAnalysisProfile(value) {
   validateUpstream(value.upstreamBaseUrl)
   if (typeof value.model !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:/+@-]*$/.test(value.model)) throw new Error('A valid analysis model ID is required')
   if (value.apiKeyEnv !== null && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value.apiKeyEnv || '')) throw new Error('Analysis key environment variable must be a valid name or null')
-  return { mode: value.mode, upstreamBaseUrl: value.upstreamBaseUrl, model: value.model, apiKeyEnv: value.apiKeyEnv }
+  if (value.apiKeySource !== undefined && value.apiKeySource !== 'local') throw new Error('Unknown analysis API key source')
+  if (value.apiKeySource === 'local' && value.apiKeyEnv !== null) throw new Error('A stored analysis key cannot also use an environment variable')
+  return { mode: value.mode, upstreamBaseUrl: value.upstreamBaseUrl, model: value.model, apiKeyEnv: value.apiKeyEnv, ...(value.apiKeySource === 'local' ? { apiKeySource: 'local' } : {}) }
 }
 
 export function loadAnalysisProfile() {

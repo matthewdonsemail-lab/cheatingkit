@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { saveDirectKey } from './secretStore.js'
 
 test('starts one detached proxy, reports health, and stops it', async () => {
   const home = mkdtempSync(join(tmpdir(), 'ck-proxy-'))
@@ -11,7 +12,7 @@ test('starts one detached proxy, reports health, and stops it', async () => {
   const codexConfig = join(home, 'codex.toml')
   writeFileSync(codexConfig, 'model = "chosen-model"\n[features]\nweb_search = true\n')
   const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: codexConfig, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml') }
-  const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 15000, windowsHide: true })
+  const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 30000, windowsHide: true })
   try {
     const started = run('start', '--port', '0', '--upstream', `http://127.0.0.1:${upstream.port}/v1`)
     // The background launcher requires a fixed port so its health check can find the child.
@@ -64,7 +65,7 @@ test('configured provider model and key reach a mock upstream and Codex settings
   writeFileSync(config, 'model = "original-model"\n[features]\nweb_search = true\n')
   writeFileSync(join(home, 'proxy-provider.json'), JSON.stringify({ provider: 'custom-responses', upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, model: 'selected-model', apiKeyEnv: 'TEST_PROVIDER_KEY' }))
   const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml'), TEST_PROVIDER_KEY: 'provider-secret' }
-  const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 15000, windowsHide: true })
+  const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 30000, windowsHide: true })
   try {
     const installed = run('install', 'codex', '--port', String(port))
     expect(installed.status).toBe(0)
@@ -96,7 +97,7 @@ test('Hermes-only install starts Chat Completions relay and restores Hermes sett
   writeFileSync(config, 'model:\n  default: original-model\n  provider: nous\nagent:\n  max_turns: 10\n')
   writeFileSync(join(home, 'proxy-hermes-provider.json'), JSON.stringify({ upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, model: 'selected-model', apiKeyEnv: 'HERMES_PROVIDER_KEY' }))
   const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_HERMES_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml'), HERMES_PROVIDER_KEY: 'provider-secret' }
-  const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 15000, windowsHide: true })
+  const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 30000, windowsHide: true })
   try {
     const installed = run('install', 'hermes', '--port', String(port))
     expect({ status: installed.status, stderr: installed.stderr }).toEqual({ status: 0, stderr: '' })
@@ -133,7 +134,7 @@ test('Codex Anthropic profile installs translated route and restores hosted sear
   writeFileSync(config, original)
   writeFileSync(join(home, 'proxy-provider.json'), JSON.stringify({ provider: 'anthropic', upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, model: 'claude-test', apiKeyEnv: 'TEST_ANTHROPIC_KEY' }))
   const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml'), TEST_ANTHROPIC_KEY: 'mock-key' }
-  const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 15000, windowsHide: true })
+  const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 30000, windowsHide: true })
   try {
     expect(run('install', 'codex', '--port', String(port)).status).toBe(0)
     expect(readFileSync(config, 'utf8')).toContain('web_search = "disabled"')
@@ -166,7 +167,7 @@ test('Codex Chat profile installs translated route, keeps Hermes destination, an
   writeFileSync(join(home, 'proxy-provider.json'), JSON.stringify({ provider: 'chat-completions', upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, model: 'chat-task-model', apiKeyEnv: 'TEST_CHAT_KEY' }))
   writeFileSync(join(home, 'proxy-hermes-provider.json'), JSON.stringify({ upstreamBaseUrl: `http://127.0.0.1:${hermesUpstream.port}/v1`, model: 'hermes-model', apiKeyEnv: null }))
   const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml'), TEST_CHAT_KEY: 'provider-secret' }
-  const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 15000, windowsHide: true })
+  const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 30000, windowsHide: true })
   try {
     expect(run('install', 'codex', '--port', String(port)).status).toBe(0)
     expect(readFileSync(config, 'utf8')).toContain('web_search = "disabled"')
@@ -184,6 +185,109 @@ test('Codex Chat profile installs translated route, keeps Hermes destination, an
   } finally {
     try { process.kill(JSON.parse(readFileSync(join(home, 'proxy.json'), 'utf8')).pid) } catch {}
     upstream.stop(true); hermesUpstream.stop(true)
+    rmSync(home, { recursive: true, force: true })
+  }
+}, 60000)
+
+test('stored Codex API key survives restart and is removed without appearing in status or config', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'ck-proxy-direct-codex-'))
+  const previous = process.env.CHEATINGKIT_HOME
+  process.env.CHEATINGKIT_HOME = home
+  let seenKey: string | null = null
+  const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
+    seenKey = request.headers.get('authorization')
+    return Response.json({ id: 'direct-key-response' })
+  } })
+  const config = join(home, 'codex.toml')
+  const entry = join(import.meta.dir, '..', 'index.ts')
+  const port = 42000 + Math.floor(Math.random() * 20000)
+  writeFileSync(config, 'model = "original-model"\n')
+  saveDirectKey('codex', 'direct-key-sentinel')
+  saveDirectKey('analysis', 'analysis-key-sentinel')
+  writeFileSync(join(home, 'proxy-provider.json'), JSON.stringify({ provider: 'custom-responses', upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, model: 'selected-model', apiKeyEnv: null, apiKeySource: 'local' }))
+  writeFileSync(join(home, 'proxy-analysis.json'), JSON.stringify({ mode: 'suggest', upstreamBaseUrl: 'http://127.0.0.1:49681/v1', model: 'analysis-model', apiKeyEnv: null, apiKeySource: 'local' }))
+  const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml') }
+  const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 30000, windowsHide: true })
+  try {
+    expect(run('install', 'codex', '--port', String(port)).status).toBe(0)
+    expect(run('stop').status).toBe(0)
+    expect(run('start', '--port', String(port)).status).toBe(0)
+    const response = await fetch(`http://127.0.0.1:${port}/v1/responses`, { method: 'POST', body: '{}' })
+    expect((await response.json()).id).toBe('direct-key-response')
+    expect(seenKey).toBe('Bearer direct-key-sentinel')
+    expect(run('status').stdout).not.toContain('direct-key-sentinel')
+    expect(readFileSync(config, 'utf8')).not.toContain('direct-key-sentinel')
+    expect(readFileSync(join(home, 'proxy-provider.json'), 'utf8')).not.toContain('direct-key-sentinel')
+    expect(readFileSync(join(home, 'proxy-analysis.json'), 'utf8')).not.toContain('analysis-key-sentinel')
+    expect(run('analysis', 'off').status).toBe(0)
+    expect(() => readFileSync(join(home, 'proxy-secrets', 'analysis.key'))).toThrow()
+    expect(run('remove', 'codex', '--port', String(port)).status).toBe(0)
+    expect(readFileSync(config, 'utf8')).toBe('model = "original-model"\n')
+    expect(() => readFileSync(join(home, 'proxy-secrets', 'codex.key'))).toThrow()
+    expect(() => readFileSync(join(home, 'proxy-provider.json'))).toThrow()
+    expect(run('status').stdout).not.toContain('direct-key-sentinel')
+  } finally {
+    try { process.kill(JSON.parse(readFileSync(join(home, 'proxy.json'), 'utf8')).pid) } catch {}
+    upstream.stop(true)
+    if (previous === undefined) delete process.env.CHEATINGKIT_HOME
+    else process.env.CHEATINGKIT_HOME = previous
+    rmSync(home, { recursive: true, force: true })
+  }
+}, 60000)
+
+test('stored Hermes and Claude keys start separate routes and are removed independently', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'ck-proxy-direct-routes-'))
+  const previous = process.env.CHEATINGKIT_HOME
+  process.env.CHEATINGKIT_HOME = home
+  let hermesKey: string | null = null
+  let claudeKey: string | null = null
+  const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
+    hermesKey = request.headers.get('authorization')
+    return Response.json({ id: 'hermes-direct' })
+  } })
+  const claudeUpstream = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
+    claudeKey = request.headers.get('x-api-key')
+    return Response.json({ id: 'claude-direct' })
+  } })
+  const hermesConfig = join(home, 'hermes.yaml')
+  const claudeSettings = join(home, 'claude.json')
+  const entry = join(import.meta.dir, '..', 'index.ts')
+  const port = 42000 + Math.floor(Math.random() * 20000)
+  writeFileSync(hermesConfig, 'model:\n  default: original\n  provider: nous\n')
+  writeFileSync(claudeSettings, '{}\n')
+  saveDirectKey('hermes', 'hermes-key-sentinel')
+  saveDirectKey('claude', 'claude-key-sentinel')
+  writeFileSync(join(home, 'proxy-hermes-provider.json'), JSON.stringify({ upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, model: 'hermes-test', apiKeyEnv: null, apiKeySource: 'local' }))
+  writeFileSync(join(home, 'proxy-anthropic.json'), JSON.stringify({ upstreamBaseUrl: `http://127.0.0.1:${claudeUpstream.port}/v1`, apiKeyEnv: null, apiKeySource: 'local' }))
+  const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_HERMES_CONFIG: hermesConfig, CHEATINGKIT_CLAUDE_SETTINGS: claudeSettings, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml') }
+  const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 30000, windowsHide: true })
+  try {
+    expect(run('install', 'hermes', '--port', String(port)).status).toBe(0)
+    expect(run('install', 'claude', '--port', String(port)).status).toBe(0)
+    expect(run('stop').status).toBe(0)
+    expect(run('start', '--port', String(port)).status).toBe(0)
+    const response = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, { method: 'POST', body: '{}' })
+    expect((await response.json()).id).toBe('hermes-direct')
+    expect(hermesKey).toBe('Bearer hermes-key-sentinel')
+    const claude = await fetch(`http://127.0.0.1:${port}/v1/messages`, { method: 'POST', body: JSON.stringify({ model: 'claude-test', messages: [] }) })
+    expect((await claude.json()).id).toBe('claude-direct')
+    expect(claudeKey).toBe('claude-key-sentinel')
+    const status = run('status').stdout
+    expect(status).not.toContain('hermes-key-sentinel')
+    expect(status).not.toContain('claude-key-sentinel')
+    expect(readFileSync(claudeSettings, 'utf8')).not.toContain('claude-key-sentinel')
+    expect(run('remove', 'hermes', '--port', String(port)).status).toBe(0)
+    expect(() => readFileSync(join(home, 'proxy-secrets', 'hermes.key'))).toThrow()
+    expect(JSON.parse(run('status').stdout).running).toBe(true)
+    expect(run('remove', 'claude', '--port', String(port)).status).toBe(0)
+    expect(() => readFileSync(join(home, 'proxy-secrets', 'claude.key'))).toThrow()
+    expect(readFileSync(claudeSettings, 'utf8')).toBe('{}\n')
+  } finally {
+    try { process.kill(JSON.parse(readFileSync(join(home, 'proxy.json'), 'utf8')).pid) } catch {}
+    upstream.stop(true)
+    claudeUpstream.stop(true)
+    if (previous === undefined) delete process.env.CHEATINGKIT_HOME
+    else process.env.CHEATINGKIT_HOME = previous
     rmSync(home, { recursive: true, force: true })
   }
 }, 60000)

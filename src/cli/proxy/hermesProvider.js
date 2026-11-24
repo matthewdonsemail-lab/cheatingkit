@@ -10,7 +10,9 @@ export function validateHermesProfile(profile) {
   validateUpstream(profile?.upstreamBaseUrl)
   if (typeof profile.model !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:/+@-]*$/.test(profile.model)) throw new Error('A valid Hermes model ID is required')
   if (profile.apiKeyEnv !== null && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(profile.apiKeyEnv || '')) throw new Error('Hermes API key environment variable must be a valid name or null')
-  return { upstreamBaseUrl: profile.upstreamBaseUrl, model: profile.model.trim(), apiKeyEnv: profile.apiKeyEnv }
+  if (profile.apiKeySource !== undefined && profile.apiKeySource !== 'local') throw new Error('Unknown API key source')
+  if (profile.apiKeySource === 'local' && profile.apiKeyEnv !== null) throw new Error('A stored API key cannot also use an environment variable')
+  return { upstreamBaseUrl: profile.upstreamBaseUrl, model: profile.model.trim(), apiKeyEnv: profile.apiKeyEnv, ...(profile.apiKeySource === 'local' ? { apiKeySource: 'local' } : {}) }
 }
 
 export function saveHermesProfile(profile) {

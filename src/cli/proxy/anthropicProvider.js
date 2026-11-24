@@ -7,10 +7,10 @@ const root = () => process.env.CHEATINGKIT_HOME || join(homedir(), '.cheatingkit
 const profilePath = () => join(root(), 'proxy-anthropic.json')
 
 export function validateAnthropicProfile(profile) {
-  if (profile?.upstreamBaseUrl !== 'https://api.anthropic.com/v1') throw new Error('Anthropic Messages upstream must be https://api.anthropic.com/v1')
   validateUpstream(profile.upstreamBaseUrl)
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(profile.apiKeyEnv || '')) throw new Error('Anthropic API key environment variable is required')
-  return { upstreamBaseUrl: profile.upstreamBaseUrl, apiKeyEnv: profile.apiKeyEnv }
+  if (profile.apiKeySource !== undefined && profile.apiKeySource !== 'local') throw new Error('Unknown API key source')
+  if (profile.apiKeySource === 'local' ? profile.apiKeyEnv !== null : !/^[A-Za-z_][A-Za-z0-9_]*$/.test(profile.apiKeyEnv || '')) throw new Error('Anthropic API key source is required')
+  return { upstreamBaseUrl: profile.upstreamBaseUrl, apiKeyEnv: profile.apiKeyEnv, ...(profile.apiKeySource === 'local' ? { apiKeySource: 'local' } : {}) }
 }
 
 export function saveAnthropicProfile(profile) {
