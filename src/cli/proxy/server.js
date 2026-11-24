@@ -48,6 +48,9 @@ export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, respon
         const target = new URL('models', `${upstream.href}/`)
         target.search = new URL(request.url).search
         const headers = relayHeaders(request.headers)
+        // The local observer must receive plain SSE, including with native clients
+        // that advertise encodings the fetch runtime cannot decode.
+        headers.set('accept-encoding', 'identity')
         if (credentialMode === 'provider' && apiKey !== undefined) {
           headers.delete('authorization')
           if (apiKey) headers.set('authorization', `Bearer ${apiKey}`)
@@ -70,6 +73,9 @@ export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, respon
       const target = new URL('responses', `${upstream.href}/`)
       return relayTracked('codex', 'responses', 'responses', analyzeCodexRequest, async (analyze) => { try {
         const headers = relayHeaders(request.headers)
+        // The local observer must receive plain SSE, including with native clients
+        // that advertise encodings the fetch runtime cannot decode.
+        headers.set('accept-encoding', 'identity')
         if (credentialMode === 'provider' && apiKey !== undefined) {
           headers.delete('authorization')
           if (apiKey) headers.set('authorization', `Bearer ${apiKey}`)
