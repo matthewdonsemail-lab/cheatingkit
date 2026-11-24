@@ -78,3 +78,39 @@ test('configured provider model and key reach a mock upstream and Codex settings
     rmSync(home, { recursive: true, force: true })
   }
 }, 60000)
+
+test('Hermes-only install starts Chat Completions relay and restores Hermes settings', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'ck-proxy-hermes-'))
+  let received: { auth: string | null, body: any } | null = null
+  const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
+    received = { auth: request.headers.get('authorization'), body: await request.json() }
+    return new Response('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\ndata: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } })
+  } })
+  const config = join(home, 'hermes.yaml')
+  const entry = join(import.meta.dir, '..', 'index.ts')
+  const port = 42000 + Math.floor(Math.random() * 20000)
+  writeFileSync(config, 'model:\n  default: original-model\n  provider: nous\nagent:\n  max_turns: 10\n')
+  writeFileSync(join(home, 'proxy-hermes-provider.json'), JSON.stringify({ upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, model: 'selected-model', apiKeyEnv: 'HERMES_PROVIDER_KEY' }))
+  const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_HERMES_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml'), HERMES_PROVIDER_KEY: 'provider-secret' }
+  const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 15000, windowsHide: true })
+  try {
+    const installed = run('install', 'hermes', '--port', String(port))
+    expect({ status: installed.status, stderr: installed.stderr }).toEqual({ status: 0, stderr: '' })
+    expect(readFileSync(config, 'utf8')).toContain('api_mode: chat_completions')
+    expect(readFileSync(config, 'utf8')).toContain(`base_url: http://127.0.0.1:${port}/v1`)
+    const body = { model: 'selected-model', messages: [{ role: 'user', content: 'Hello' }], tools: [{ type: 'function', function: { name: 'work' } }], stream: true }
+    const response = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, { method: 'POST', headers: { authorization: 'Bearer local-secret', 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    expect(response.headers.get('content-type')).toBe('text/event-stream')
+    expect(await response.text()).toContain('data: [DONE]')
+    expect(received).toEqual({ auth: 'Bearer provider-secret', body })
+    writeFileSync(config, readFileSync(config, 'utf8').replace('max_turns: 10', 'max_turns: 20'))
+    expect(run('remove', 'hermes').status).toBe(0)
+    expect(readFileSync(config, 'utf8')).toContain('provider: nous')
+    expect(readFileSync(config, 'utf8')).toContain('max_turns: 20')
+    expect(JSON.parse(run('stop').stdout).stopped).toBe(true)
+  } finally {
+    try { process.kill(JSON.parse(readFileSync(join(home, 'proxy.json'), 'utf8')).pid) } catch {}
+    upstream.stop(true)
+    rmSync(home, { recursive: true, force: true })
+  }
+}, 60000)
