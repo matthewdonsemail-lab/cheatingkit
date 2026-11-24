@@ -7,6 +7,8 @@ import { createProxyServer, validateUpstream } from './server.js'
 import { installCodexRoute, removeCodexRouteFromDisk } from './codex.js'
 import { installedVersion } from '../updates/client.js'
 import { loadProfile, saveProfile } from './provider.js'
+import { loadAnalysisProfile, saveAnalysisProfile } from './analysisProfile.js'
+import { createCodexAnalysis } from './analysis.js'
 import * as clack from '@clack/prompts'
 
 const root = () => process.env.CHEATINGKIT_HOME || join(homedir(), '.cheatingkit')
@@ -66,6 +68,32 @@ async function configureInteractively() {
 
 export async function runProxyCommand(args) {
   const action = args[0]
+  if (action === 'analysis') {
+    if (args[1] === 'status') { console.log(JSON.stringify(loadAnalysisProfile())); return }
+    if (args[1] === 'last') {
+      const path = join(root(), 'proxy-analysis-last.json')
+      console.log(existsSync(path) ? readFileSync(path, 'utf8').trim() : JSON.stringify({ available: false }))
+      return
+    }
+    if (args[1] === 'off') { console.log(JSON.stringify(saveAnalysisProfile({ mode: 'off' }))); return }
+    if (args[1] !== 'setup') throw new Error('Use ck proxy analysis setup|status|last|off')
+    clack.intro('CheatingKit request analysis')
+    const mode = await clack.select({ message: 'How should proposed wording be used?', options: [
+      { value: 'suggest', label: 'Suggest only', hint: 'record proposal; forward original request' },
+      { value: 'apply', label: 'Apply proposal', hint: 'replace latest plain user text before forwarding' },
+    ] })
+    if (clack.isCancel(mode)) { clack.cancel('Analysis setup stopped'); return }
+    const upstreamBaseUrl = await clack.text({ message: 'Separate analysis model API base URL ending in /v1', initialValue: 'https://api.openai.com/v1', validate: (value) => { try { validateUpstream(value); return } catch (error) { return error.message } } })
+    if (clack.isCancel(upstreamBaseUrl)) { clack.cancel('Analysis setup stopped'); return }
+    const model = await clack.text({ message: 'Analysis model ID', validate: (value) => value?.trim() ? undefined : 'Enter a model ID' })
+    if (clack.isCancel(model)) { clack.cancel('Analysis setup stopped'); return }
+    const apiKeyEnv = await clack.text({ message: 'Analysis model API key environment variable (blank for keyless endpoint)', initialValue: 'OPENAI_API_KEY', validate: (value) => !value || /^[A-Za-z_][A-Za-z0-9_]*$/.test(value) ? undefined : 'Enter an environment variable name' })
+    if (clack.isCancel(apiKeyEnv)) { clack.cancel('Analysis setup stopped'); return }
+    if (apiKeyEnv.trim() && !process.env[apiKeyEnv.trim()]) throw new Error(`Set ${apiKeyEnv.trim()} before starting the proxy`)
+    console.log(JSON.stringify(saveAnalysisProfile({ mode, upstreamBaseUrl, model, apiKeyEnv: apiKeyEnv.trim() || null })))
+    clack.outro('Restart the proxy to apply analysis settings.')
+    return
+  }
   if (action === 'setup') {
     if (existsSync(join(root(), 'proxy-codex.json'))) throw new Error('Remove the current Codex proxy route before choosing a new provider')
     clack.intro('CheatingKit provider proxy setup')
@@ -80,7 +108,17 @@ export async function runProxyCommand(args) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Proxy port must be between 1 and 65535')
   if (action === 'serve') {
     const { upstream, apiKeyEnv, keyless } = route(args)
-    const server = createProxyServer({ port, upstreamBaseUrl: upstream, apiKey: apiKeyEnv ? process.env[apiKeyEnv] : keyless ? '' : undefined })
+    const analysis = loadAnalysisProfile()
+    if (analysis.apiKeyEnv && !process.env[analysis.apiKeyEnv]) throw new Error(`Set ${analysis.apiKeyEnv} before starting the proxy`)
+    const analyzeCodexRequest = analysis.mode === 'off' ? undefined : createCodexAnalysis({ ...analysis, proxyPort: port, apiKey: analysis.apiKeyEnv ? process.env[analysis.apiKeyEnv] : undefined,
+      onDecision: (decision) => {
+        const path = join(root(), 'proxy-analysis-last.json')
+        const temp = `${path}.${process.pid}.tmp`
+        writeFileSync(temp, JSON.stringify({ at: new Date().toISOString(), ...decision }) + '\n', { mode: 0o600 })
+        renameSync(temp, path)
+      },
+    })
+    const server = createProxyServer({ port, upstreamBaseUrl: upstream, apiKey: apiKeyEnv ? process.env[apiKeyEnv] : keyless ? '' : undefined, analyzeCodexRequest })
     writeState({ pid: process.pid, port: server.port, startedAt: new Date().toISOString(), version: installedVersion().version, upstreamBaseUrl: upstream, apiKeyEnv: apiKeyEnv || null })
     console.log(`CheatingKit proxy listening on http://127.0.0.1:${server.port}/v1`)
     const close = () => { server.stop(true); if (readState()?.pid === process.pid) rmSync(statePath(), { force: true }); process.exit(0) }
@@ -142,5 +180,5 @@ export async function runProxyCommand(args) {
     console.log(JSON.stringify(removeCodexRouteFromDisk()))
     return
   }
-  throw new Error('Use ck proxy setup|start|status|stop|serve|install codex|remove codex')
+  throw new Error('Use ck proxy setup|start|status|stop|serve|install codex|remove codex|analysis setup|status|last|off')
 }
