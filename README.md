@@ -62,7 +62,7 @@ ck proxy remove codex
 ck proxy stop
 ```
 
-Set the chosen key environment variable before `ck proxy setup` and keep it available when starting the proxy again. The installer starts a detached loopback server, adds the local `openai_base_url` and selected model to Codex's configuration, and records the previous values for restoration. Restart Codex after installing or removing the route. The provider must implement `/v1/responses` for both normal and streaming requests. Providers that only expose Chat Completions, Anthropic Messages, or Gemini APIs need separate translation adapters and are not yet selectable. The proxy does not yet analyze or rewrite messages; [issue #10](https://github.com/matthewdonsemail-lab/cheatingkit/issues/10) tracks those stages.
+Set the chosen key environment variable before `ck proxy setup` and keep it available when starting the proxy again. The installer starts a detached loopback server, adds a dedicated `cheatingkit` model provider and selected model to Codex's configuration, and records the previous values for restoration. The local provider disables WebSockets because this route serves HTTP Responses requests and SSE streams. Restart Codex after installing or removing the route. The upstream provider must implement `/v1/responses` for both normal and streaming requests. Providers that only expose Chat Completions, Anthropic Messages, or Gemini APIs need separate translation adapters and are not yet selectable. The proxy does not yet analyze or rewrite messages; [issue #10](https://github.com/matthewdonsemail-lab/cheatingkit/issues/10) tracks those stages.
 
 ## Updates
 

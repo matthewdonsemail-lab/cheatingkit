@@ -7,10 +7,14 @@ import { addCodexRoute, installCodexRoute, removeCodexRoute, removeCodexRouteFro
 test('adds and removes a root route while retaining unrelated Codex settings', () => {
   const original = 'model = "chosen-model"\r\nopenai_base_url = "https://old.example/v1"\r\n[features]\r\nweb_search = true\r\n'
   const patch = addCodexRoute(original, 'http://127.0.0.1:4178/v1')
-  expect(patch.content).toContain('openai_base_url = "http://127.0.0.1:4178/v1"')
+  expect(patch.content).toContain('model_provider = "cheatingkit"')
+  expect(patch.content).toContain('base_url = "http://127.0.0.1:4178/v1"')
+  expect(patch.content).toContain('supports_websockets = false')
   const changed = patch.content.replace('web_search = true', 'web_search = false')
   expect(removeCodexRoute(changed, patch)).toBe(original.replace('web_search = true', 'web_search = false'))
-  expect(() => addCodexRoute('model_provider = "custom"\n', 'http://127.0.0.1:4178/v1')).toThrow()
+  const custom = 'model_provider = "custom"\n[model_providers.custom]\nbase_url = "https://other.example/v1"\n'
+  const customPatch = addCodexRoute(custom, 'http://127.0.0.1:4178/v1')
+  expect(removeCodexRoute(customPatch.content, customPatch)).toBe(custom)
 })
 
 test('install and remove preserve settings edited after installation', () => {
@@ -23,7 +27,7 @@ test('install and remove preserve settings edited after installation', () => {
   try {
     writeFileSync(config, 'model = "chosen-model"\n[features]\nweb_search = true\n')
     installCodexRoute('http://127.0.0.1:4178/v1')
-    expect(readFileSync(config, 'utf8')).toContain('openai_base_url = "http://127.0.0.1:4178/v1"')
+    expect(readFileSync(config, 'utf8')).toContain('base_url = "http://127.0.0.1:4178/v1"')
     writeFileSync(config, readFileSync(config, 'utf8').replace('web_search = true', 'web_search = false'))
     expect(removeCodexRouteFromDisk().removed).toBe(true)
     expect(readFileSync(config, 'utf8')).toBe('model = "chosen-model"\n[features]\nweb_search = false\n')

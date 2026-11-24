@@ -36,7 +36,7 @@ test('starts one detached proxy, reports health, and stops it', async () => {
     expect((await response.json()).id).toBe('mock')
     expect(JSON.parse(run('status').stdout).running).toBe(true)
     expect(run('install', 'codex', '--port', String(port), '--upstream', `http://127.0.0.1:${upstream.port}/v1`).status).toBe(0)
-    expect(readFileSync(codexConfig, 'utf8')).toContain(`openai_base_url = "http://127.0.0.1:${port}/v1"`)
+    expect(readFileSync(codexConfig, 'utf8')).toContain(`base_url = "http://127.0.0.1:${port}/v1"`)
     expect(run('remove', 'codex').status).toBe(0)
     expect(readFileSync(codexConfig, 'utf8')).toBe('model = "chosen-model"\n[features]\nweb_search = true\n')
     expect(JSON.parse(run('stop').stdout).stopped).toBe(true)

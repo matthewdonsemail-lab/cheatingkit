@@ -19,42 +19,58 @@ function rootEnd(lines) {
   return found < 0 ? lines.length : found
 }
 
+function rootSetting(lines, name) {
+  return lines.findIndex((line, index) => index < rootEnd(lines) && new RegExp(`^\\s*${name}\\s*=`).test(line))
+}
+
+function updateRootSetting(lines, name, value) {
+  const at = rootSetting(lines, name)
+  const previous = at < 0 ? null : lines[at]
+  if (at >= 0) lines.splice(at, 1, value)
+  else lines.splice(rootEnd(lines), 0, value)
+  return previous
+}
+
+function restoreRootSetting(lines, name, expected, previous) {
+  const at = rootSetting(lines, name)
+  if (at < 0 || lines[at] !== expected) throw new Error(`Codex ${name} was edited; inspect it before restoring`)
+  lines.splice(at, 1, ...(previous === null ? [] : [previous]))
+}
+
 export function addCodexRoute(content, baseUrl, model = null) {
+  if (content.includes(marker) || /^\s*\[model_providers\.cheatingkit\]\s*$/m.test(content)) throw new Error('CheatingKit route already appears in Codex config')
   const eol = content.includes('\r\n') ? '\r\n' : '\n'
   const bom = content.startsWith('\uFEFF') ? '\uFEFF' : ''
   const lines = content.slice(bom.length).split(/\r?\n/)
-  const end = rootEnd(lines)
-  if (lines.some((line, index) => index < end && line.trim() === marker)) throw new Error('CheatingKit route already appears in Codex config')
-  const provider = lines.slice(0, end).find((line) => /^\s*model_provider\s*=/.test(line))
-  if (provider && !/^\s*model_provider\s*=\s*["']openai["']\s*(?:#.*)?$/.test(provider)) throw new Error('Codex uses a custom model_provider; configure that provider separately before installing this route')
-  const previousAt = lines.findIndex((line, index) => index < end && /^\s*openai_base_url\s*=/.test(line))
-  const previousLine = previousAt < 0 ? null : lines[previousAt]
-  const line = `openai_base_url = "${baseUrl}"`
-  if (previousAt >= 0) lines.splice(previousAt, 1, marker, line)
-  else lines.splice(end, 0, marker, line)
-  const modelAt = lines.findIndex((item, index) => index < rootEnd(lines) && /^\s*model\s*=/.test(item))
-  const previousModelLine = modelAt < 0 ? null : lines[modelAt]
+  const providerLine = 'model_provider = "cheatingkit"'
+  const previousProviderLine = updateRootSetting(lines, 'model_provider', providerLine)
   const modelLine = model === null ? null : `model = "${model}"`
-  if (modelLine !== null) {
-    if (modelAt >= 0) lines.splice(modelAt, 1, modelLine)
-    else lines.splice(lines.indexOf(marker) + 2, 0, modelLine)
-  }
-  return { content: bom + lines.join(eol), previousLine, line, previousModelLine, modelLine }
+  const previousModelLine = modelLine === null ? null : updateRootSetting(lines, 'model', modelLine)
+  const prefix = bom + lines.join(eol)
+  const block = `${prefix && !prefix.endsWith(eol) ? eol : ''}${marker}${eol}[model_providers.cheatingkit]${eol}name = "CheatingKit local proxy"${eol}base_url = "${baseUrl}"${eol}wire_api = "responses"${eol}requires_openai_auth = false${eol}supports_websockets = false${eol}request_max_retries = 0${eol}stream_max_retries = 0${eol}# End CheatingKit local provider proxy${eol}`
+  return { content: prefix + block, providerLine, previousProviderLine, modelLine, previousModelLine, block }
 }
 
 export function removeCodexRoute(content, state) {
-  const eol = content.includes('\r\n') ? '\r\n' : '\n'
-  const bom = content.startsWith('\uFEFF') ? '\uFEFF' : ''
-  const lines = content.slice(bom.length).split(/\r?\n/)
-  const at = lines.findIndex((line, index) => index < rootEnd(lines) && line.trim() === marker)
-  if (at < 0 || lines[at + 1] !== state.line) throw new Error('Codex proxy setting was edited; inspect it before restoring')
-  if (state.modelLine) {
-    const modelAt = lines.findIndex((line, index) => index < rootEnd(lines) && line === state.modelLine)
-    if (modelAt < 0) throw new Error('Codex proxy model was edited; inspect it before restoring')
-    lines.splice(modelAt, 1, ...(state.previousModelLine === null ? [] : [state.previousModelLine]))
+  if (!state.providerLine) {
+    // Restore installations made by the earlier preview without changing their saved state.
+    const eol = content.includes('\r\n') ? '\r\n' : '\n'
+    const bom = content.startsWith('\uFEFF') ? '\uFEFF' : ''
+    const lines = content.slice(bom.length).split(/\r?\n/)
+    const at = lines.findIndex((line, index) => index < rootEnd(lines) && line.trim() === marker)
+    if (at < 0 || lines[at + 1] !== state.line) throw new Error('Codex proxy setting was edited; inspect it before restoring')
+    if (state.modelLine) restoreRootSetting(lines, 'model', state.modelLine, state.previousModelLine)
+    const markerAt = lines.indexOf(marker)
+    lines.splice(markerAt, 2, ...(state.previousLine === null ? [] : [state.previousLine]))
+    return bom + lines.join(eol)
   }
-  const markerAt = lines.indexOf(marker)
-  lines.splice(markerAt, 2, ...(state.previousLine === null ? [] : [state.previousLine]))
+  if (!content.includes(state.block)) throw new Error('Codex proxy provider block was edited; inspect it before restoring')
+  const withoutBlock = content.replace(state.block, '')
+  const eol = withoutBlock.includes('\r\n') ? '\r\n' : '\n'
+  const bom = withoutBlock.startsWith('\uFEFF') ? '\uFEFF' : ''
+  const lines = withoutBlock.slice(bom.length).split(/\r?\n/)
+  restoreRootSetting(lines, 'model_provider', state.providerLine, state.previousProviderLine)
+  if (state.modelLine) restoreRootSetting(lines, 'model', state.modelLine, state.previousModelLine)
   return bom + lines.join(eol)
 }
 
@@ -64,17 +80,17 @@ export function installCodexRoute(baseUrl, model = null) {
   const existed = existsSync(path)
   const original = existed ? readFileSync(path, 'utf8') : ''
   const patch = addCodexRoute(original, baseUrl, model)
-  writeAtomic(statePath(), JSON.stringify({ path, existed, previousLine: patch.previousLine, line: patch.line, previousModelLine: patch.previousModelLine, modelLine: patch.modelLine }) + '\n')
+  writeAtomic(statePath(), JSON.stringify({ path, existed, ...patch, content: undefined }) + '\n')
   try { writeAtomic(path, patch.content) }
   catch (error) { rmSync(statePath(), { force: true }); throw error }
-  return { installed: true, path, baseUrl }
+  return { installed: true, path, baseUrl, model }
 }
 
 export function removeCodexRouteFromDisk() {
   if (!existsSync(statePath())) return { removed: false }
   const state = JSON.parse(readFileSync(statePath(), 'utf8'))
   const current = readFileSync(state.path, 'utf8')
-  if (!current.includes(marker) && !current.includes(state.line)) {
+  if (!current.includes(marker) && !current.includes(state.providerLine || state.line)) {
     rmSync(statePath(), { force: true })
     return { removed: true, path: state.path, alreadyRestored: true }
   }
