@@ -282,7 +282,19 @@ ${goal}`, protocol: analysis.protocol || 'responses', model: analysis.model,
               })
             } finally { db.close() }
           },
-        }),
+          prefer: analysis.mode === 'off' ? null : async ({ original, challenger, incumbent }) => {
+        const { rewriteOnce } = await import('./analysis.js')
+        const instructions = 'Compare two rewrites of the same prompt. Prefer the one that still outlines the original intended goal completely, then the one that reads most neutral and benign so it is least likely refused. Answer with one word: A, B, or TIE.'
+        const input = `Original prompt:\n${original}\n\nA (incumbent):\n${incumbent.text}\n\nB (challenger):\n${challenger.text}`
+        const result = await rewriteOnce({
+          context: '', input, protocol: analysis.protocol || 'responses', model: analysis.model,
+          upstreamBaseUrl: analysis.upstreamBaseUrl, apiKey: providerKey('analysis', analysis),
+          structuredOutput: false, instructions,
+        })
+        const word = String(result.proposedText || '').trim().toUpperCase()
+        return { better: /^B/.test(word) ? 'challenger' : /^TIE/.test(word) ? 'tie' : 'incumbent', reason: word.slice(0, 40) || 'unparsed' }
+      },
+    }),
         'gate.evaluate': async ({ originalText, proposedText, evidence }) => {
           const { record } = await gate(JSON.stringify({ input: proposedText || originalText }), { protocol: 'responses', proposedText, analysisContext: { evidence: evidence || '' } })
           return { decision: record.decision, reason: record.terminationReason, evidence: record.sourceIds }

@@ -1,6 +1,7 @@
 import { audit } from './audit.js'
 import { applyAudit, contract, decide, setArtifactPath, unresolved } from './mea.js'
 import { fanOut } from './attempts.js'
+import { chargeCapability } from './capabilities.js'
 
 // One MEA round, fanned out. The manager picks a record and mints the round number
 // once, so concurrent attempts cannot collide on it. N parallel attempts run against
@@ -32,11 +33,16 @@ export async function runRound({ db, env, replId, goal, onHostRequest, copies = 
   const codeFor = (index) => [
     `console.log(${JSON.stringify(prompt)})`,
     `const seed = ${JSON.stringify(seeds[index] || goal)}`,
-    `const result = await __host.request('attempt.rewrite', { goal: ${JSON.stringify(goal)}, seed, subtask: ${JSON.stringify(bounded.subtask)} })`,
+    // The attempt pulls its own evidence with its own seed, so the local CPU retrieval
+    // is an explicit step the audit can see rather than a hidden side effect.
+    `const pack = await __host.request('context.pack', { prompt: seed, maxChars: 4500 })`,
+    `const result = await __host.request('attempt.rewrite', { goal: ${JSON.stringify(goal)}, seed, evidence: pack.text, subtask: ${JSON.stringify(bounded.subtask)} })`,
     `await __host.request('attempt.write', { dir: attemptDir, name: 'rewrite.json', body: JSON.stringify({ ...result, seed }) })`,
     `result.status`,
   ].join('\n')
   const parentCapability = env.capabilityToken()
+  // The round spends the parent before fanning out, so a loop cannot run unbounded.
+  chargeCapability(db, parentCapability, copies)
   const attempts = await fanOut({
     db, replId, parentCapability, directory: env.directory, round,
     copies, codeFor, onHostRequest,

@@ -9,6 +9,7 @@ import { runRound } from './rounds.js'
 
 // A rewrite that always proposes, and an auditor that either finds the candidate or not.
 const auditHandlers = (found) => async ({ type, dir, name, body, path, count }) => {
+  if (type === 'context.pack') return { text: 'evidence' }
   if (type === 'attempt.seeds') return { seeds: Array.from({ length: count || 3 }, (_, i) => `seed${i}`) }
   if (type === 'attempt.rewrite') return { status: 'proposed', proposedText: 'rewritten', reason: 'ok' }
   if (type === 'attempt.write') { const { writeFileSync, mkdirSync } = await import('node:fs'); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, name), body); return { path: join(dir, name) } }

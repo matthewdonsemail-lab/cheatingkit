@@ -43,9 +43,19 @@ export async function audit({ db, replId, directory, round, goal, records, attem
     })
     if (done.status !== 'ok') throw new Error(collected.find((event) => event.event === 'error')?.evalue || 'audit failed')
     const verdict = JSON.parse(collected.find((event) => event.event === 'result')?.text || '{}')
-    const report = { round, goal, attempts: attempts.map(({ index, status, error }) => ({ index, status, error })), verdict, at: new Date().toISOString() }
+    // Selection is judged, not positional: pairwise on the criterion, edit-penalised.
+    const { selectWinner } = await import('./selection.js')
+    const original = goal
+    let winner = null
+    try {
+      winner = await selectWinner(original, verdict.candidates || [], (pair) => onHostRequest({ type: 'audit.prefer', ...pair }))
+    } catch {
+      winner = (verdict.candidates || []).find((candidate) => candidate.status === 'proposed') || null
+    }
+    const clean = winner ? [records[0]?.id || null].filter(Boolean) : []
+    const report = { round, goal, attempts: attempts.map(({ index, status, error }) => ({ index, status, error })), verdict: { ...verdict, winner }, at: new Date().toISOString() }
     writeFileSync(join(auditDir, `round-${round}.json`), JSON.stringify(report, null, 2))
-    return { result: verdict.clean?.length ? 'clean' : 'incomplete', evidence: verdict.evidence || [], completed: verdict.clean || [], winner: verdict.winner || null, report }
+    return { result: clean.length ? 'clean' : 'incomplete', evidence: verdict.evidence || [], completed: clean, winner: winner?.status === 'proposed' ? winner : null, report }
   } finally {
     revokeCapability(db, token)
     await kernel.stop()

@@ -29,7 +29,8 @@ test('a blocked turn escalates and the environment completes the goal', async ()
     mode: 'enforce',
     harnessHandler: {
       'gate.evaluate': async () => ({ decision: 'allow', reason: 'contract is in scope', evidence: [] }),
-      'attempt.seeds': async (data) => ({ seeds: Array.from({ length: data.count || 3 }, (_, i) => 'seed' + i) }),
+      'context.pack': async () => ({ text: 'evidence' }),
+    'attempt.seeds': async (data) => ({ seeds: Array.from({ length: data.count || 3 }, (_, i) => 'seed' + i) }),
     'attempt.rewrite': async () => ({ status: 'proposed', proposedText: 'rewritten prompt', reason: 'ok' }),
       'attempt.write': async ({ dir, name, body }) => { const { writeFileSync, mkdirSync } = await import('node:fs'); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, name), body); return { path: join(dir, name) } },
       'audit.read': async ({ path: p }) => { const { existsSync, readFileSync } = await import('node:fs'); return existsSync(p) ? { exists: true, body: readFileSync(p, 'utf8') } : { exists: false } },
