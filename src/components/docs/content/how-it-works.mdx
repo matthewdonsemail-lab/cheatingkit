@@ -15,3 +15,7 @@ A task may span multiple sessions and harnesses. A later prompt such as “conti
 5. Record warning and model-switch observations against the same timeline so the user can inspect what happened.
 
 For the exact cursor, index, and recovery design, see [Local context and search](/docs/models/context-pipeline).
+
+## Provider proxy preview
+
+The Codex provider proxy is a separate integration. `ck proxy install codex --upstream <provider /v1 URL>` points Codex at a resident loopback server that relays `/v1/responses` requests and responses to the selected upstream. `ck proxy remove codex` restores the prior Codex setting. This first pass-through version does not use the context pack to alter a provider request. [Issue #10](https://github.com/matthewdonsemail-lab/cheatingkit/issues/10) specifies the analysis stage and additional harness adapters.

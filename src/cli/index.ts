@@ -24,7 +24,7 @@ async function updateNotice(config) {
 
 const run = Effect.gen(function* () {
   if (command === 'help' || command === '--help') {
-    console.log('ck setup | detect | ingest | index | context --prompt TEXT | hooks install|remove | mcp | label | sessions | timeline | areas | leadups | version | updates | update [--track stable|nightly] [--apply]')
+    console.log('ck setup | detect | ingest | index | context --prompt TEXT | hooks install|remove | proxy start|status|stop|install codex|remove codex | mcp | label | sessions | timeline | areas | leadups | version | updates | update [--track stable|nightly] [--apply]')
     return
   }
   if (command === 'version' || command === '--version' || command === '-v') {
@@ -71,6 +71,7 @@ const run = Effect.gen(function* () {
   }
   const config = loadConfig()
   const env = configEnvironment(config)
+  if (command === 'proxy') { const { runProxyCommand } = yield* Effect.promise(() => import('./proxy/client.js')); yield* Effect.tryPromise(() => runProxyCommand(process.argv.slice(3))); return }
   if (command === 'mcp') { const { serveMcp } = yield* Effect.promise(() => import('./mcp/server.js')); yield* Effect.tryPromise(() => serveMcp()); return }
   if (command === 'hooks') {
     const action = process.argv[3]
