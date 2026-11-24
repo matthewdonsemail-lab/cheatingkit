@@ -144,3 +144,22 @@ test('a terminal provider completion remains completed when the harness closes t
     expect(attempt.error).toBeNull()
   } finally { store.close() }
 })
+
+test('enforced apply mode never forwards the original when the rewrite provider fails', async () => {
+  let calls = 0
+  const store = openAttemptStore(openDatabase(':memory:'))
+  const gate = createMessageGate({ mode: 'enforce', contextForPrompt, evaluate: valid })
+  const proxy = createProxyServer({ port: 0, upstreamBaseUrl: 'http://task.invalid/v1', gate, attemptStore: store,
+    analyzeCodexRequest: async () => ({ body: raw, decision: { mode: 'apply', originalText: JSON.parse(raw).input, proposedText: null, sourceIds: ['codex/session#1'], reason: 'analysis model returned HTTP 429' } }),
+    fetchUpstream: async () => { calls++; return Response.json({}) },
+  })
+  try {
+    const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, { method: 'POST', body: raw })
+    expect(response.status).toBe(403)
+    expect(calls).toBe(0)
+    const attempt = store.get(response.headers.get('x-cheatingkit-request-id'))
+    expect(attempt.gateDecision.terminationReason).toContain('Rewrite unavailable')
+    expect(attempt.gateDecision.sourceIds).toEqual(['codex/session#1'])
+    expect(attempt.analysisApplied).toBe(false)
+  } finally { proxy.stop(true); store.close() }
+})

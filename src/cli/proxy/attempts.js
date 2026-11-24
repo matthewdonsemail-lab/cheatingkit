@@ -212,9 +212,12 @@ export async function trackProxyRequest(request, { store, harness, protocol, pro
       let result
       try {
         analysis = analyze ? await analyze(rawBody, { signal: request.signal }) : null
+        if (gate.mode === 'enforce' && analysis?.decision?.mode === 'apply' && !analysis.decision.proposedText) {
+          throw new Error(`Rewrite unavailable: ${analysis.decision.reason || 'no validated proposal'}`)
+        }
         result = await gate(rawBody, { protocol, proposedText: analysis?.decision?.proposedText, signal: request.signal })
       } catch (error) {
-        result = { body: rawBody, record: { originalRequest: rawBody, mode: gate.mode || 'enforce', decision: 'block', terminationReason: `evaluator_error: ${error.message}`, evaluations: [], revisions: [], sourceIds: [] } }
+        result = { body: rawBody, record: { originalRequest: rawBody, originalText: analysis?.decision?.originalText, mode: gate.mode || 'enforce', decision: 'block', terminationReason: `evaluator_error: ${error.message}`, evaluations: [], revisions: [], sourceIds: analysis?.decision?.sourceIds || [] } }
       }
       if (store && auditError && result.record.mode === 'enforce') {
         result.record.decision = 'block'; result.record.terminationReason = 'attempt audit unavailable'
