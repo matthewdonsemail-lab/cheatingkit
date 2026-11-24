@@ -118,6 +118,17 @@ test('client cancellation aborts analysis and does not call task provider', asyn
   } finally { proxy.stop(true); upstream.stop(true) }
 })
 
+test('a pasted proxy error payload is never sent to the analysis model', async () => {
+  let called = false
+  const errorBody = JSON.stringify({ input: '{"error":{"message":"request.text is unsupported by Chat Completions","type":"invalid_request_error"}}' })
+  const analyze = createCodexAnalysis({ mode: 'apply', model: 'analysis-model', upstreamBaseUrl: 'https://analysis.example/v1',
+    fetchAnalysis: async () => { called = true; return Response.json(proposal) } })
+  const result = await analyze(errorBody)
+  expect(result.body).toBe(errorBody)
+  expect(result.decision).toMatchObject({ applied: false, reason: 'skipped proxy error payload' })
+  expect(called).toBe(false)
+})
+
 test('analysis upstream cannot loop back into the same proxy port', () => {
   expect(() => createCodexAnalysis({ mode: 'apply', model: 'm', proxyPort: 4178, upstreamBaseUrl: 'http://localhost:4178/v1' })).toThrow('cannot point back')
 })

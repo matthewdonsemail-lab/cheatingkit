@@ -3,6 +3,24 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadProfile, saveProfile, validateProfile } from './provider.js'
+import { saveAnalysisProfile } from './analysisProfile.js'
+
+test('the analysis provider cannot also be the main Codex provider', () => {
+  const home = mkdtempSync(join(tmpdir(), 'ck-provider-sep-'))
+  const previous = process.env.CHEATINGKIT_HOME
+  process.env.CHEATINGKIT_HOME = home
+  try {
+    saveAnalysisProfile({ mode: 'suggest', protocol: 'chat-completions', upstreamBaseUrl: 'https://analysis.example/v1', model: 'analysis-model', apiKeyEnv: null })
+    const profile = { provider: 'chat-completions', upstreamBaseUrl: 'https://analysis.example/v1', model: 'task-model', apiKeyEnv: null }
+    expect(() => saveProfile(profile)).toThrow('analysis provider cannot also be the main')
+    expect(loadProfile()).toBeNull()
+    expect(saveProfile({ ...profile, upstreamBaseUrl: 'https://task.example/v1' }).upstreamBaseUrl).toBe('https://task.example/v1')
+  } finally {
+    if (previous === undefined) delete process.env.CHEATINGKIT_HOME
+    else process.env.CHEATINGKIT_HOME = previous
+    rmSync(home, { recursive: true, force: true })
+  }
+})
 
 test('provider profile stores a model and credential reference, never a secret', () => {
   const home = mkdtempSync(join(tmpdir(), 'ck-provider-'))

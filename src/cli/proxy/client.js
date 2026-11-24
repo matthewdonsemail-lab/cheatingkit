@@ -10,7 +10,7 @@ import { installHermesRoute, removeHermesRouteFromDisk } from './hermes.js'
 import { loadAnthropicProfile, saveAnthropicProfile } from './anthropicProvider.js'
 import { loadHermesProfile, saveHermesProfile } from './hermesProvider.js'
 import { installedVersion } from '../updates/client.js'
-import { loadProfile, saveProfile } from './provider.js'
+import { assertDistinctFromAnalysis, loadProfile, saveProfile } from './provider.js'
 import { loadAnalysisProfile, saveAnalysisProfile } from './analysisProfile.js'
 import { createCodexAnalysis } from './analysis.js'
 import { createClaudeMessagesAnalysis } from './claudeAnalysis.js'
@@ -84,6 +84,7 @@ function route(args) {
   const upstream = option(args, '--upstream', process.env.CHEATINGKIT_PROXY_UPSTREAM || profile?.upstreamBaseUrl)
   if (!upstream) return null
   validateUpstream(upstream)
+  if (!profile || profile.upstreamBaseUrl !== upstream) assertDistinctFromAnalysis(upstream)
   const apiKeyEnv = option(args, '--api-key-env', profile?.upstreamBaseUrl === upstream ? profile.apiKeyEnv : undefined)
   const keyless = args.includes('--keyless') || (apiKeyEnv === null && profile?.upstreamBaseUrl === upstream)
   const matching = profile?.upstreamBaseUrl === upstream ? profile : null
@@ -126,16 +127,16 @@ async function configureInteractively() {
     { value: 'openai', label: 'OpenAI API', hint: 'native Responses API' },
     { value: 'custom-responses', label: 'Custom Responses-compatible endpoint', hint: 'must support POST /v1/responses' },
     { value: 'anthropic', label: 'Anthropic API', hint: 'translate supported Codex Responses requests to Messages' },
-    { value: 'agnes', label: 'Agnes 3.0 Flash', hint: 'Chat Completions at apihub.agnes-ai.com' },
     { value: 'chat-completions', label: 'Chat Completions-compatible endpoint', hint: 'translate supported Codex Responses requests to Chat Completions' },
   ] })
   if (clack.isCancel(selectedProvider)) { clack.cancel('Proxy setup stopped'); return null }
-  const provider = selectedProvider === 'agnes' ? 'chat-completions' : selectedProvider
-  const upstreamBaseUrl = provider === 'openai' ? 'https://api.openai.com/v1' : await clack.text({ message: 'Provider API base URL ending in /v1', initialValue: selectedProvider === 'agnes' ? 'https://apihub.agnes-ai.com/v1' : provider === 'anthropic' ? 'https://api.anthropic.com/v1' : provider === 'chat-completions' ? hermesProfile?.upstreamBaseUrl : undefined, validate: (value) => { try { validateUpstream(value); return } catch (error) { return error.message } } })
+  const provider = selectedProvider
+  const upstreamBaseUrl = provider === 'openai' ? 'https://api.openai.com/v1' : await clack.text({ message: 'Provider API base URL ending in /v1', initialValue: provider === 'anthropic' ? 'https://api.anthropic.com/v1' : provider === 'chat-completions' ? hermesProfile?.upstreamBaseUrl : undefined, validate: (value) => { try { validateUpstream(value); return } catch (error) { return error.message } } })
   if (clack.isCancel(upstreamBaseUrl)) { clack.cancel('Proxy setup stopped'); return null }
-  const model = await clack.text({ message: 'Model ID to select in Codex', initialValue: selectedProvider === 'agnes' ? 'agnes-3.0-flash' : provider === 'chat-completions' ? hermesProfile?.model : undefined, validate: (value) => value?.trim() ? undefined : 'Enter a model ID' })
+  assertDistinctFromAnalysis(upstreamBaseUrl)
+  const model = await clack.text({ message: 'Model ID to select in Codex', initialValue: provider === 'chat-completions' ? hermesProfile?.model : undefined, validate: (value) => value?.trim() ? undefined : 'Enter a model ID' })
   if (clack.isCancel(model)) { clack.cancel('Proxy setup stopped'); return null }
-  const credential = await chooseCredential('codex', { defaultEnv: provider === 'openai' ? 'OPENAI_API_KEY' : provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : provider === 'chat-completions' ? hermesProfile?.apiKeyEnv || '' : '', allowKeyless: selectedProvider !== 'agnes' && !['openai', 'anthropic'].includes(provider) })
+  const credential = await chooseCredential('codex', { defaultEnv: provider === 'openai' ? 'OPENAI_API_KEY' : provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : provider === 'chat-completions' ? hermesProfile?.apiKeyEnv || '' : '', allowKeyless: !['openai', 'anthropic'].includes(provider) })
   if (!credential) return null
   return saveProfile({ provider, upstreamBaseUrl, model, ...credential })
 }
@@ -241,7 +242,13 @@ export async function runProxyCommand(args) {
   if (action === 'status') {
     const state = readState()
     const live = state && await health(state.port)
-    console.log(JSON.stringify(state && live?.pid === state.pid ? { running: true, ...state } : { running: false, staleState: Boolean(state) }))
+    const mainProfile = loadProfile()
+    const analysis = loadAnalysisProfile()
+    console.log(JSON.stringify({
+      ...(state && live?.pid === state.pid ? { running: true, ...state } : { running: false, staleState: Boolean(state) }),
+      main: mainProfile ? { provider: mainProfile.provider, upstreamBaseUrl: mainProfile.upstreamBaseUrl, model: mainProfile.model } : null,
+      analysis: analysis.mode === 'off' ? { mode: 'off' } : { mode: analysis.mode, protocol: analysis.protocol, upstreamBaseUrl: analysis.upstreamBaseUrl, model: analysis.model },
+    }))
     return
   }
   if (action === 'start') {
@@ -294,7 +301,10 @@ export async function runProxyCommand(args) {
     const current = readState()
     if (current && ((current.upstreamBaseUrl || null) !== (responses?.upstream || null) || (current.responsesProtocol || 'responses') !== (responses?.responsesProtocol || 'responses') || (current.apiKeySource || null) !== (responses?.apiKeySource || null) || (current.anthropicUpstreamBaseUrl || null) !== (anthropic?.upstreamBaseUrl || null) || (current.anthropicApiKeyEnv || null) !== (anthropic?.apiKeyEnv || null) || (current.anthropicApiKeySource || null) !== (anthropic?.apiKeySource || null) || (current.hermesUpstreamBaseUrl || null) !== (hermes?.upstreamBaseUrl || null) || (current.hermesApiKeyEnv || null) !== (hermes?.apiKeyEnv || null) || (current.hermesApiKeySource || null) !== (hermes?.apiKeySource || null))) await runProxyCommand(['stop'])
     await runProxyCommand(['start', '--port', String(port), ...(responses ? ['--upstream', responses.upstream] : [])])
-    console.log(JSON.stringify(args[1] === 'claude' ? installClaudeRoute(`http://127.0.0.1:${port}`) : args[1] === 'hermes' ? installHermesRoute(`http://127.0.0.1:${port}/v1`, hermes.model) : installCodexRoute(`http://127.0.0.1:${port}/v1`, responses.model, { disableWebSearch: responses.responsesProtocol !== 'responses' })))
+    // Never rewrite the harness's model choice: the model the user selected in
+    // Codex is the model that must reach the provider. The analysis model stays
+    // behind the scenes and is configured separately with `ck proxy analysis setup`.
+    console.log(JSON.stringify(args[1] === 'claude' ? installClaudeRoute(`http://127.0.0.1:${port}`) : args[1] === 'hermes' ? installHermesRoute(`http://127.0.0.1:${port}/v1`, hermes.model) : installCodexRoute(`http://127.0.0.1:${port}/v1`, null, { disableWebSearch: responses.responsesProtocol !== 'responses' })))
     return
   }
   if (action === 'remove') {

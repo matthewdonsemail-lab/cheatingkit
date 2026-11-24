@@ -86,7 +86,19 @@ function inputItem(item, index, names) {
   return { role: item.role, content: content(item.content, `input[${index}].content`) }
 }
 
+// Some newer harness versions and hook-injected context send a top-level `text`
+// field. Consume it as the request input when `input` is absent, drop it when a
+// real `input` is present. Everything else stays on the strict allowlist so
+// features we cannot preserve (previous_response_id, unsupported tools, ...)
+// still fail loudly.
+function normalizeRequestKeys(body) {
+  if (!object(body) || !('text' in body)) return body
+  const { text, ...rest } = body
+  return rest.input === undefined ? { ...rest, input: text } : rest
+}
+
 export function responsesToChat(body) {
+  body = normalizeRequestKeys(body)
   only(body, ['model', 'instructions', 'input', 'tools', 'tool_choice', 'parallel_tool_calls', 'stream', 'temperature', 'top_p', 'max_output_tokens', 'user', 'metadata', 'store', 'truncation', 'reasoning', 'include', 'prompt_cache_key', 'client_metadata'], 'request')
   if (!body.model || typeof body.model !== 'string') fail('request.model is required')
   if (body.store === true) fail('request.store is unsupported by Chat Completions')

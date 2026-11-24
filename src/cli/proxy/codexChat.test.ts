@@ -38,6 +38,11 @@ test('flattens namespace tools and restores their identity on return', async () 
   } finally { upstream.stop(true) }
 })
 
+test('maps a top-level text key to input and ignores it when input is present', () => {
+  expect(responsesToChat({ model: 'task-model', text: 'Do the task', stream: false }).messages).toEqual([{ role: 'user', content: 'Do the task' }])
+  expect(responsesToChat({ model: 'task-model', input: 'Real input', text: 'noise' }).messages).toEqual([{ role: 'user', content: 'Real input' }])
+})
+
 test('rejects Responses features that Chat Completions cannot preserve', () => {
   for (const extra of [{ previous_response_id: 'resp_old' }, { reasoning: { effort: 'high' } }, { tools: [{ type: 'web_search' }] }, { input: [{ role: 'user', content: [{ type: 'input_audio', audio: 'AA==' }] }] }]) {
     expect(() => responsesToChat({ model: 'model', input: 'Hi', ...extra })).toThrow()
