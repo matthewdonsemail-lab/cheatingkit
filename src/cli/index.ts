@@ -24,7 +24,7 @@ async function updateNotice(config) {
 
 const run = Effect.gen(function* () {
   if (command === 'help' || command === '--help') {
-    console.log('ck setup | detect | ingest | index | context --prompt TEXT | hooks install|remove | proxy setup [claude|hermes]|start|status|stop|run codex|claude|hermes -- [args]|startup install|status|remove|attempts [request ID] [--limit N] [--prompt TEXT]|install codex|claude|hermes|remove codex|claude|hermes|analysis setup|status|last|off | mcp | label | sessions | timeline | areas | leadups | version | updates | update [--track stable|nightly] [--apply]')
+    console.log('ck setup | detect | ingest | index | context --prompt TEXT | repl open|exec|state|evaluate|audit|snapshot|restore|show|close | hooks install|remove | proxy setup [claude|hermes]|start|status|stop|run codex|claude|hermes -- [args]|startup install|status|remove|attempts [request ID] [--limit N] [--prompt TEXT]|install codex|claude|hermes|remove codex|claude|hermes|analysis setup|status|last|off | mcp | label | sessions | timeline | areas | leadups | version | updates | update [--track stable|nightly] [--apply]')
     return
   }
   if (command === 'version' || command === '--version' || command === '-v') {
@@ -73,6 +73,7 @@ const run = Effect.gen(function* () {
   const env = configEnvironment(config)
   if (command === 'proxy') { const { runProxyCommand } = yield* Effect.promise(() => import('./proxy/client.js')); yield* Effect.tryPromise(() => runProxyCommand(process.argv.slice(3))); return }
   if (command === 'mcp') { const { serveMcp } = yield* Effect.promise(() => import('./mcp/server.js')); yield* Effect.tryPromise(() => serveMcp()); return }
+  if (command === 'repl') { const { runReplCommand } = yield* Effect.promise(() => import('./repl/client.js')); yield* Effect.tryPromise(() => runReplCommand(process.argv.slice(3))); return }
   if (command === 'hooks') {
     const action = process.argv[3]
     if (action === 'install') console.log(JSON.stringify(installHooks(), null, 2))

@@ -1,0 +1,50 @@
+# The RLM environment
+
+The environment lets a model work in a persistent workspace instead of a single prompt. The prompt is a variable in that workspace, not text in the context window. Work survives between cells, and cells are short, so a long task does not degrade as the conversation grows.
+
+The name comes from [Recursive Language Models](https://arxiv.org/html/2512.24601): the prompt is loaded as a variable, the model writes code that reads and rewrites parts of it, and a final value is returned from a variable rather than from the last message.
+
+## Open an environment
+
+```sh
+ck repl open --goal "summarise our indexed refusals for this task"
+ck repl open --goal "..." --mode workspace-write --budget 400
+```
+
+`open` prints a `replId` and a directory. The goal is written to `goal.md` in that directory and is the intent every cell is charged against. Modes are `read-only` (default), `workspace-write` and `full-access`.
+
+## Run a cell
+
+```sh
+ck repl exec --id <replId> --code "var hits = searchSessions(db, 'hydraulic')"
+ck repl exec --id <replId> --code "hits.length"
+```
+
+Each call is its own process. The environment is restored from its snapshot before the cell runs and saved after, so values persist between calls without a resident process.
+
+## Ask the gate
+
+```sh
+ck repl evaluate --id <replId> --text "a prompt to assess"
+ck repl audit --id <replId>
+ck repl state --id <replId>
+```
+
+`evaluate` calls the same gate the proxy uses. `state` lists the task records and `audit` lists the rounds.
+
+## Capabilities
+
+A cell never carries ambient authority. Each environment mints a capability scoped to an action, the environment directory, the goal and a budget. Every cell is charged before it runs; an exhausted or revoked capability refuses the next cell. A spawned child is given an attenuated capability — narrower and smaller, never more than the parent has left.
+
+## Through MCP
+
+Any harness with MCP drives the same environment over the connection, so a cell cannot run without a harness:
+
+- `repl_open` — `{ goal, mode? }`
+- `repl_exec` — `{ code, goal? }`
+- `repl_take` — `{ name? }` lists durable names or reads one back as text
+- `repl_close` — revokes the capability
+
+## Storage
+
+Sessions live in `replSessions`, values in `replValues` (the snapshot on disk is authoritative), task records in `replTaskState`, rounds in `replAudits`, gate outcomes in `replEvaluations` and authority in `replCapabilities`. Snapshots and manifests sit under `~/.cheatingkit/repl/<replId>/`.

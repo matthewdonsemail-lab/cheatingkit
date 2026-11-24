@@ -131,12 +131,86 @@ export function openDatabase(path = databasePath()) {
       indexedAt TEXT NOT NULL,
       chunks INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS replSessions (
+      replId TEXT PRIMARY KEY,
+      harness TEXT,
+      sessionId TEXT,
+      goal TEXT NOT NULL,
+      mode TEXT NOT NULL,
+      status TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      closedAt TEXT
+    );
+    CREATE TABLE IF NOT EXISTS replValues (
+      replId TEXT NOT NULL,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      updatedAt TEXT NOT NULL,
+      PRIMARY KEY (replId, name)
+    );
+    CREATE TABLE IF NOT EXISTS replTaskState (
+      id TEXT PRIMARY KEY,
+      replId TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      body TEXT NOT NULL,
+      status TEXT NOT NULL,
+      evidence TEXT NOT NULL DEFAULT '[]',
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS replAudits (
+      id TEXT PRIMARY KEY,
+      replId TEXT NOT NULL,
+      round INTEGER NOT NULL,
+      result TEXT NOT NULL,
+      evidence TEXT NOT NULL DEFAULT '[]',
+      createdAt TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS replCapabilities (
+      token TEXT PRIMARY KEY,
+      replId TEXT NOT NULL,
+      parentToken TEXT,
+      action TEXT NOT NULL,
+      resource TEXT NOT NULL,
+      intent TEXT NOT NULL,
+      budget INTEGER NOT NULL,
+      spent INTEGER NOT NULL DEFAULT 0,
+      createdAt TEXT NOT NULL,
+      revokedAt TEXT
+    );
+    CREATE TABLE IF NOT EXISTS replSubagents (
+      childId TEXT PRIMARY KEY,
+      replId TEXT NOT NULL,
+      parentChildId TEXT,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL,
+      answer TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS replEvaluations (
+      id TEXT PRIMARY KEY,
+      replId TEXT NOT NULL,
+      round INTEGER,
+      trigger TEXT NOT NULL,
+      decision TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      evidence TEXT NOT NULL DEFAULT '[]',
+      dimensions TEXT NOT NULL DEFAULT '{}',
+      compliance REAL,
+      createdAt TEXT NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS messagesByTime ON messages(harness, sessionId, timestamp);
     CREATE INDEX IF NOT EXISTS messagesByRolePosition ON messages(harness, sessionId, role, sourcePosition);
     CREATE INDEX IF NOT EXISTS timelineByTime ON timeline(timestamp);
     CREATE INDEX IF NOT EXISTS timelineByKind ON timeline(harness, sessionId, kind, sourceId);
     CREATE INDEX IF NOT EXISTS proxyAttemptsByTime ON proxyAttempts(startedAt DESC);
     CREATE INDEX IF NOT EXISTS proxyAttemptsBySession ON proxyAttempts(harness,sessionId,sourceId);
+    CREATE INDEX IF NOT EXISTS replTaskStateByRepl ON replTaskState(replId, status);
+    CREATE INDEX IF NOT EXISTS replAuditsByRepl ON replAudits(replId, round);
+    CREATE INDEX IF NOT EXISTS replSubagentsByRepl ON replSubagents(replId);
   `)
   return db
 }

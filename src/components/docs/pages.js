@@ -15,6 +15,7 @@ import Models from './content/models.mdx'
 import ModelMiniLM from './content/models/minilm/index.mdx'
 import ModelGLiNER from './content/models/gliner/index.mdx'
 import ContextPipeline from './content/context-pipeline.mdx'
+import Repl from './content/repl.mdx'
 import Database from './content/database.mdx'
 import PluginsAndMcps from './content/plugins-and-mcps.mdx'
 
@@ -55,6 +56,7 @@ export const pages = [
   { slug: 'models/minilm', title: 'MiniLM embeddings', description: 'Exact local embedding model, operation, examples, and files.', sections: ['How it works', 'Why this model', 'Exact use example', 'Pinned files'], Content: ModelMiniLM },
   { slug: 'models/gliner', title: 'GLiNER 2.5 screening', description: 'Exact local extraction model, operation, examples, and files.', sections: ['How it works', 'Why this model', 'Exact use example', 'Pinned files'], Content: ModelGLiNER },
   { slug: 'models/context-pipeline', title: 'Local context and search', description: 'Incremental indexing, retrieval, harness delivery, and gate input.', sections: ['Import and index', 'Per-message recall', 'Harness delivery', 'Gate input', 'Scope of the index'], Content: ContextPipeline },
+  { slug: 'repl', title: 'The RLM environment', description: 'Work in a persistent workspace where the prompt is a variable.', sections: ['Open an environment', 'Run a cell', 'Ask the gate', 'Capabilities', 'Through MCP', 'Storage'], Content: Repl },
   { slug: 'database', title: 'Database design', description: 'SQLite source records, projections, and cursors.', sections: ['Source and projections', 'Cursors and recovery', 'Time and identity', 'Private data', 'Rebuild contract'], Content: Database },
 ]
 
