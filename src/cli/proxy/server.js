@@ -40,10 +40,23 @@ export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, respon
     if (['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname) && Number(target.port) === port) throw new Error('Proxy upstream cannot point back to CheatingKit')
   }
   const server = Bun.serve({
-    hostname: '127.0.0.1', port,
+    hostname: '127.0.0.1', port, idleTimeout: 0,
     async fetch(request) {
       const path = new URL(request.url).pathname
       if (path === '/health' && request.method === 'GET') return Response.json({ service: 'cheatingkit-proxy', pid: process.pid, port: server.port })
+      if (upstream && responsesProtocol === 'responses' && path === '/v1/models' && request.method === 'GET') {
+        const target = new URL('models', `${upstream.href}/`)
+        target.search = new URL(request.url).search
+        const headers = relayHeaders(request.headers)
+        if (credentialMode === 'provider' && apiKey !== undefined) {
+          headers.delete('authorization')
+          if (apiKey) headers.set('authorization', `Bearer ${apiKey}`)
+        }
+        try {
+          const response = await fetchUpstream(target, { headers, signal: request.signal, redirect: 'manual' })
+          return new Response(response.body, { status: response.status, headers: relayHeaders(response.headers) })
+        } catch { return Response.json({ error: { message: 'Model discovery failed' } }, { status: 502 }) }
+      }
       const relayTracked = (harness, protocol, provider, analyze, relay) => trackProxyRequest(request, { store: attemptStore, harness, protocol, provider, analyze, relay, gate })
       if (anthropicUpstream && anthropicPath(path)) {
         const relay = (analyze) => relayAnthropicRequest(request, { upstreamBaseUrl: anthropicUpstream.href, apiKey: credentialMode === 'provider' ? anthropicApiKey : undefined, fetchUpstream, analyzeMessagesRequest: analyze })

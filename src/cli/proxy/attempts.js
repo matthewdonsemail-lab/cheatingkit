@@ -112,10 +112,12 @@ export function observeResponse(response, { store, requestId, protocol }) {
   let wire = ''
   let explicitRefusal = false
   let streamError = null
+  let providerCompleted = false
   let finished = false
   const record = (completed, error = null) => {
     if (finished) return
     finished = true
+    if (providerCompleted && !streamError) { completed = true; error = null }
     const providerWarning = streamError && /cyber|malware|phishing|credential[_ -]theft/i.test(streamError)
     const observation = providerWarning ? 'potential_cyber_warning' : error ? (error === streamError ? 'provider_error' : 'stream_error') : status >= 400 ? 'http_error' : explicitRefusal ? 'observed_refusal' : warningPattern.test(excerpt) && refusalPattern.test(excerpt) ? 'potential_cyber_warning' : refusalPattern.test(excerpt) ? 'potential_refusal' : 'completed'
     try { store.finish(requestId, { httpStatus: status, responseCompleted: completed, responseExcerpt: excerpt, observation, error: error || streamError }) } catch { /* audit failure must not change provider response */ }
@@ -123,9 +125,11 @@ export function observeResponse(response, { store, requestId, protocol }) {
   const parseSseLine = (line) => {
     if (!line.startsWith('data:')) return
     const payload = line.slice(5).trim()
-    if (payload === '[DONE]') return
+    if (payload === '[DONE]') { providerCompleted = true; return }
     try {
-      const event = eventText(JSON.parse(payload), protocol)
+      const value = JSON.parse(payload)
+      providerCompleted ||= protocol === 'responses' && value.type === 'response.completed' || protocol === 'messages' && value.type === 'message_stop'
+      const event = eventText(value, protocol)
       excerpt = (excerpt + event.text).slice(0, maxExcerpt)
       explicitRefusal ||= event.refusal
       streamError ||= event.error

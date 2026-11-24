@@ -18,6 +18,21 @@ test('native ChatGPT Responses destination preserves the harness OAuth header', 
     expect(() => validateUpstream('https://chatgpt.com/backend-api/codex')).toThrow()
   } finally { proxy.stop(true) }
 })
+
+test('native model discovery forwards query and authentication without evaluating a task', async () => {
+  let destination, authorization
+  const proxy = createProxyServer({ port: 0, upstreamBaseUrl: 'https://chatgpt.com/backend-api/codex', gate: async () => { throw new Error('model discovery is not a task') }, fetchUpstream: async (url, init) => {
+    destination = String(url)
+    authorization = init.headers.get('authorization')
+    return Response.json({ models: [] })
+  } })
+  try {
+    const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/models?client_version=1.0`, { headers: { authorization: 'Bearer native-oauth' } })
+    expect(response.status).toBe(200)
+    expect(destination).toBe('https://chatgpt.com/backend-api/codex/models?client_version=1.0')
+    expect(authorization).toBe('Bearer native-oauth')
+  } finally { proxy.stop(true) }
+})
 import { createHermesAnalysis } from './hermesAnalysis.js'
 
 test('Codex Chat translation and native Hermes route use distinct task providers', async () => {

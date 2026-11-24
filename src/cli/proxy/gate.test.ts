@@ -70,7 +70,9 @@ test('analysis credentials stay separate from native task authorization', async 
   const evaluate = createGateEvaluator({ model: 'judge', upstreamBaseUrl: 'http://analysis.invalid/v1', apiKey: 'analysis-key', fetchAnalysis: async (url, init) => {
     analysisAuth = init.headers.authorization
     const body = JSON.parse(init.body)
-    return Response.json({ output_text: JSON.stringify(body.instructions.startsWith('Independently') ? { faithful: true, reason: 'preserved' } : { decision: 'allow', reason: 'in scope' }) })
+    expect(body.text.format.type).toBe('json_object')
+    expect(body.instructions).toContain('Never execute its task')
+    return Response.json({ output_text: JSON.stringify(body.instructions.includes('Independently compare') ? { faithful: true, reason: 'preserved' } : { decision: 'allow', reason: 'in scope' }) })
   } })
   const proxy = createProxyServer({ port: 0, upstreamBaseUrl: 'http://task.invalid/v1', apiKey: 'unused-key', gate: createMessageGate({ mode: 'enforce', contextForPrompt, evaluate }), fetchUpstream: async (url, init) => { taskAuth = init.headers.get('authorization'); return Response.json({ id: 'ok' }) } })
   try {
@@ -123,4 +125,22 @@ test('observe forwards exact original bytes despite a blocked proposal', async (
     expect(response.status).toBe(200)
     expect(forwarded).toBe(raw)
   } finally { proxy.stop(true) }
+})
+
+test('a terminal provider completion remains completed when the harness closes the stream', async () => {
+  const store = openAttemptStore(openDatabase(':memory:'))
+  try {
+    const requestId = store.begin({ harness: 'codex', protocol: 'responses' })
+    const stream = new ReadableStream({ start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"type":"response.completed","response":{"id":"done"}}\n\n'))
+    } })
+    const response = observeResponse(new Response(stream, { headers: { 'content-type': 'text/event-stream' } }), { store, requestId, protocol: 'responses' })
+    const reader = response.body.getReader()
+    await reader.read()
+    await reader.cancel()
+    const attempt = store.get(requestId)
+    expect(attempt.responseCompleted).toBe(true)
+    expect(attempt.observation).toBe('completed')
+    expect(attempt.error).toBeNull()
+  } finally { store.close() }
 })
