@@ -132,7 +132,9 @@ export function openDatabase(path = databasePath()) {
       chunks INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS messagesByTime ON messages(harness, sessionId, timestamp);
+    CREATE INDEX IF NOT EXISTS messagesByRolePosition ON messages(harness, sessionId, role, sourcePosition);
     CREATE INDEX IF NOT EXISTS timelineByTime ON timeline(timestamp);
+    CREATE INDEX IF NOT EXISTS timelineByKind ON timeline(harness, sessionId, kind, sourceId);
     CREATE INDEX IF NOT EXISTS proxyAttemptsByTime ON proxyAttempts(startedAt DESC);
     CREATE INDEX IF NOT EXISTS proxyAttemptsBySession ON proxyAttempts(harness,sessionId,sourceId);
   `)
