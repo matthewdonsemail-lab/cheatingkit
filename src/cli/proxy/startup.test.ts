@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { installStartup, removeStartup, startupStatus } from './startup.js'
 
-test('Windows login launcher is opt-in, quoted, reversible, and confined to an isolated startup folder', () => {
+const windowsTest = process.platform === 'win32' ? test : test.skip
+
+windowsTest('Windows login launcher is opt-in, quoted, reversible, and confined to an isolated startup folder', () => {
   const sandbox = mkdtempSync(join(tmpdir(), 'ck-startup-'))
   const previousHome = process.env.CHEATINGKIT_HOME
   const previousStartup = process.env.CHEATINGKIT_STARTUP_DIR
@@ -33,7 +35,7 @@ test('Windows login launcher is opt-in, quoted, reversible, and confined to an i
   }
 })
 
-test('startup removal refuses to delete an edited or unowned file', () => {
+windowsTest('startup removal refuses to delete an edited or unowned file', () => {
   const sandbox = mkdtempSync(join(tmpdir(), 'ck-startup-owner-'))
   const previousHome = process.env.CHEATINGKIT_HOME
   const previousStartup = process.env.CHEATINGKIT_STARTUP_DIR
