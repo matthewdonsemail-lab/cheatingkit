@@ -20,6 +20,18 @@ function latestUser(input) {
   return null
 }
 
+// A proxy translation error pasted back into the harness must not be treated as
+// a task prompt: doing so makes the analysis model propose a "fix" and feeds the
+// same failure back into the next request.
+function isProxyErrorPayload(text) {
+  if (typeof text !== 'string' || text.length > 2000) return false
+  try {
+    const value = JSON.parse(text)
+    const message = value?.error?.message
+    return typeof message === 'string' && /unsupported by Chat Completions|invalid_request_error/.test(message)
+  } catch { return false }
+}
+
 function outputText(response) {
   if (typeof response.output_text === 'string') return response.output_text
   return response.output?.flatMap((item) => item?.content || []).filter((part) => part?.type === 'output_text').map((part) => part.text || '').join('') || ''
@@ -63,6 +75,10 @@ export function createCodexAnalysis({ mode = 'off', protocol = 'responses', mode
       const selected = latestUser(parsed.input)
       if (!selected?.text?.trim() || selected.text.length > 12_000) throw new Error('no eligible latest user text')
       decision.originalText = selected.text
+      if (isProxyErrorPayload(selected.text)) {
+        decision.reason = 'skipped proxy error payload'
+        return { body: rawBody, decision }
+      }
       let context
       if (contextForPrompt) context = await contextForPrompt(selected.text)
       else {

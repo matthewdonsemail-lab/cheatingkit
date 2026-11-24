@@ -2,9 +2,19 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { validateUpstream } from './server.js'
+import { loadAnalysisProfile } from './analysisProfile.js'
 
 const root = () => process.env.CHEATINGKIT_HOME || join(homedir(), '.cheatingkit')
 const profilePath = () => join(root(), 'proxy-provider.json')
+
+const sameUpstream = (a, b) => Boolean(a && b) && a.replace(/\/$/, '') === b.replace(/\/$/, '')
+
+export function assertDistinctFromAnalysis(upstreamBaseUrl) {
+  const analysis = loadAnalysisProfile()
+  if (analysis.mode !== 'off' && sameUpstream(analysis.upstreamBaseUrl, upstreamBaseUrl)) {
+    throw new Error('The analysis provider cannot also be the main Codex provider; set the main route to the model the harness normally uses')
+  }
+}
 
 export function validateProfile(profile) {
   if (!['openai', 'custom-responses', 'anthropic', 'chat-completions'].includes(profile?.provider)) throw new Error('Choose OpenAI, Anthropic, or a custom Responses or Chat Completions provider')
@@ -20,6 +30,7 @@ export function validateProfile(profile) {
 
 export function saveProfile(profile) {
   const value = validateProfile(profile)
+  assertDistinctFromAnalysis(value.upstreamBaseUrl)
   mkdirSync(root(), { recursive: true })
   const temp = `${profilePath()}.${process.pid}.tmp`
   writeFileSync(temp, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 })

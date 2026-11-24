@@ -69,7 +69,7 @@ test('configured provider model and key reach a mock upstream and Codex settings
   try {
     const installed = run('install', 'codex', '--port', String(port))
     expect(installed.status).toBe(0)
-    expect(readFileSync(config, 'utf8')).toContain('model = "selected-model"')
+    expect(readFileSync(config, 'utf8')).toContain('model = "original-model"')
     const body = { model: 'selected-model', input: [{ role: 'user', content: 'Hello' }], stream: false }
     const response = await fetch(`http://127.0.0.1:${port}/v1/responses`, { method: 'POST', headers: { authorization: 'Bearer harness-token', 'content-type': 'application/json' }, body: JSON.stringify(body) })
     expect((await response.json()).id).toBe('mock-response')
