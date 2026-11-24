@@ -8,7 +8,7 @@ export function databasePath(env = process.env) {
 }
 
 export function openDatabase(path = databasePath()) {
-  mkdirSync(dirname(path), { recursive: true })
+  if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
   const db = new Database(path, { create: true })
   db.exec(`
     PRAGMA journal_mode = WAL;
@@ -55,6 +55,28 @@ export function openDatabase(path = databasePath()) {
       kind TEXT NOT NULL,
       detail TEXT NOT NULL,
       PRIMARY KEY (harness, sessionId, sourceId, kind)
+    );
+    CREATE TABLE IF NOT EXISTS proxyAttempts (
+      requestId TEXT PRIMARY KEY,
+      startedAt TEXT NOT NULL,
+      completedAt TEXT,
+      harness TEXT NOT NULL,
+      protocol TEXT NOT NULL,
+      provider TEXT,
+      model TEXT,
+      sessionId TEXT,
+      sourceId TEXT,
+      originalText TEXT,
+      proposedText TEXT,
+      evidenceSourceIds TEXT NOT NULL DEFAULT '[]',
+      analysisMode TEXT,
+      analysisReason TEXT,
+      analysisApplied INTEGER NOT NULL DEFAULT 0,
+      httpStatus INTEGER,
+      responseCompleted INTEGER NOT NULL DEFAULT 0,
+      responseExcerpt TEXT,
+      observation TEXT,
+      error TEXT
     );
     CREATE TABLE IF NOT EXISTS sourceCursors (
       sourcePath TEXT PRIMARY KEY,
@@ -111,6 +133,8 @@ export function openDatabase(path = databasePath()) {
     );
     CREATE INDEX IF NOT EXISTS messagesByTime ON messages(harness, sessionId, timestamp);
     CREATE INDEX IF NOT EXISTS timelineByTime ON timeline(timestamp);
+    CREATE INDEX IF NOT EXISTS proxyAttemptsByTime ON proxyAttempts(startedAt DESC);
+    CREATE INDEX IF NOT EXISTS proxyAttemptsBySession ON proxyAttempts(harness,sessionId,sourceId);
   `)
   return db
 }
