@@ -7,7 +7,7 @@ const kernelEntry = fileURLToPath(new URL('./kernel.ts', import.meta.url))
 // One live kernel. Frames are newline-delimited JSON; host requests are answered
 // through the supplied handlers so the kernel itself never touches storage.
 export class KernelSession {
-  constructor({ replId, onHostRequest, onEvent, cellTimeoutMs = 60_000 } = {}) {
+  constructor({ replId, onHostRequest, onEvent, cellTimeoutMs = 150_000 } = {}) {
     this.replId = replId
     this.onHostRequest = onHostRequest
     this.onEvent = onEvent

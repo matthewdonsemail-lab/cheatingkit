@@ -78,7 +78,7 @@ export async function rewriteOnce({ context, instructions, input, protocol, mode
     ? { model, stream: false, ...(structuredOutput ? { response_format: { type: 'json_object' } } : {}), messages: [{ role: 'system', content: instructions }, { role: 'user', content: `${context}\n\n${input}` }] }
     : { model, stream: false, instructions, input: `${context}\n\n${input}`, ...(structuredOutput ? { text: { format: { type: 'json_object' } } } : {}) }
   const response = await requestAnalysis(fetchAnalysis, endpoint, {
-    method: 'POST', headers, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000),
+    method: 'POST', headers, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(120_000)]) : AbortSignal.timeout(120_000),
     body: JSON.stringify(body),
   })
   if (!response.ok) {
