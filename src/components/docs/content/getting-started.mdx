@@ -26,7 +26,7 @@ The version controlled website installers look up npm's `latest` release, instal
 ck setup
 ```
 
-Setup detects local Claude Code, Codex, and Hermes session sources. It creates `~/.cheatingkit/config.yaml` and a local SQLite database, then offers to import existing sessions, build the semantic index, and install prompt hooks. Your index remains on your machine.
+Setup detects local Claude Code, Codex, and Hermes session sources. It creates `~/.cheatingkit/config.yaml` and a local SQLite database, then offers to import existing sessions, build the semantic index, and install prompt hooks. Complete the semantic index build before using prompt context. Your index remains on your machine.
 
 Restart each harness after installing hooks. Codex may ask you to trust the hook definition. For every new prompt, CheatingKit imports new local records and supplies a bounded context pack containing related earlier user requests, nearby later user messages, observed warning responses, and exact source IDs. The current prompt stays intact.
 

@@ -28,7 +28,7 @@ ck sessions
 ck timeline
 ```
 
-`ck setup` detects supported local session sources, creates `~/.cheatingkit/config.yaml` and a local SQLite database, and offers to import conversations, build the semantic index, and install prompt hooks. The hooks import new transcript records before each prompt and add a bounded context pack with message IDs. Each website installer resolves npm's `latest` tag to an exact published version, installs it, and verifies `ck --version`.
+`ck setup` detects supported local session sources, creates `~/.cheatingkit/config.yaml` and a local SQLite database, and offers to import conversations, build the semantic index, and install prompt hooks. Complete the semantic index build before using prompt context. The hooks import new transcript records before each prompt and add a source-linked context pack when the index is ready. Each website installer resolves npm's `latest` tag to an exact published version, installs it, and verifies `ck --version`.
 
 ## What you can do
 

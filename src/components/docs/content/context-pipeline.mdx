@@ -10,7 +10,7 @@ CheatingKit uses local Claude Code, Codex, and Hermes transcripts to provide sou
 
 ## Per-message recall
 
-At a prompt boundary, CheatingKit imports new records from the current transcript or Hermes store and searches earlier user messages across the three harnesses. Keyword overlap provides a local fallback when the semantic index is absent. When the index is available, MiniLM and FTS5 contribute candidate windows. Known workspace paths keep results within the current workspace; records without a workspace path can still appear. The context pack contains related user messages, nearby later user messages, nearby assistant responses, and observed warning responses. Every excerpt includes its harness, session, and message ID.
+At a prompt boundary, CheatingKit imports new records from the current transcript or Hermes store and searches indexed history across the three harnesses. MiniLM and FTS5 contribute candidate windows. Run `ck index` to build the semantic index before using prompt context; the hook returns no context until the index is ready. Known workspace paths keep results within the current workspace; records without a workspace path can still appear. The context pack contains related user messages, nearby later user messages, nearby assistant responses, and observed warning responses. Every excerpt includes its harness, session, and message ID.
 
 Later user messages are shown as later evidence, rather than silently replacing the earlier request. The current prompt remains authoritative. Results are limited to 4,500 characters by default; no relevant match returns no injected context.
 

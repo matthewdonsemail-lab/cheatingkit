@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process'
 import YAML from 'yaml'
 import { openDatabase } from '../storage/client.js'
 import { buildContextPack } from './client.js'
+import { indexSessions } from '../search/client.js'
 import { installHooks, removeHooks } from '../harnesses/hooks.js'
 
 test('recalls cross-harness user history, later scope, and observed response with source IDs', async () => {
@@ -18,13 +19,15 @@ test('recalls cross-harness user history, later scope, and observed response wit
     put.run('codex', 'prior', 'u2', 2, 'user', JSON.stringify('Only inspect the loader; do not patch it'))
     put.run('codex', 'prior', 'a1', 3, 'assistant', JSON.stringify('I cannot help with this malware analysis; safety warning'))
     db.prepare('INSERT INTO timeline(harness,sessionId,sourceId,kind,detail) VALUES(?,?,?,?,?)').run('codex', 'prior', 'a1', 'cyberWarning', 'observed')
-    const pack = await buildContextPack(db, 'Continue the loader startup crash', { harness: 'claudeCode', sessionId: 'new', cwd: dir })
+    const embed = async (texts: string[]) => texts.map((text) => text.toLowerCase().includes('loader') ? Float32Array.from([1, 0]) : Float32Array.from([0, 1]))
+    await indexSessions(db, () => {}, embed)
+    const pack = await buildContextPack(db, 'Continue the loader startup crash', { harness: 'claudeCode', sessionId: 'new', cwd: dir, embed })
     expect(pack).toContain('codex/prior#u1')
     expect(pack).toContain('codex/prior#u2')
     expect(pack).toContain('Only inspect the loader')
     expect(pack).toContain('codex/prior#a1')
     expect(pack.length).toBeLessThanOrEqual(4500)
-    expect(await buildContextPack(db, 'xyz completely unrelated', { cwd: dir })).toBe('')
+    expect(await buildContextPack(db, 'xyz completely unrelated', { cwd: dir, embed })).toBe('')
   } finally { db.close(); try { rmSync(dir, { recursive: true, force: true }) } catch {} }
 }, 60000)
 
@@ -45,7 +48,7 @@ test('hook installation preserves other hooks and is removable', () => {
   } finally { rmSync(home, { recursive: true, force: true }) }
 })
 
-test('prompt hook emits the harness context output from the local database', () => {
+test('prompt hook stays silent until the semantic index is ready', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ck-hook-output-'))
   const dbPath = join(dir, 'sessions.db')
   const configPath = join(dir, 'config.yaml')
@@ -62,6 +65,6 @@ test('prompt hook emits the harness context output from the local database', () 
       encoding: 'utf8', env: { ...process.env, CHEATINGKIT_CONFIG: configPath }, timeout: 15000,
     })
     expect(result.status).toBe(0)
-    expect(JSON.parse(result.stdout).hookSpecificOutput.additionalContext).toContain('codex/s1#m1')
+    expect(result.stdout.trim()).toBe('')
   } finally { db.close(); try { rmSync(dir, { recursive: true, force: true }) } catch {} }
 }, 60000)
