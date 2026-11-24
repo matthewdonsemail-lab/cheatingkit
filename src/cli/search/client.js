@@ -6,7 +6,7 @@ import { models } from '../models/client.js'
 import { loadConfig, expandPath } from '../config/client.js'
 
 const embedModel = models.find((model) => model.key === 'minilm')
-const modelId = `${embedModel.id}@${embedModel.revision}`
+const modelId = `${embedModel.id}@${embedModel.revision}#userkey`
 let extractor
 
 function textOf(raw) {
@@ -39,7 +39,10 @@ function chunksOf(rows) {
   for (let start = 0; start < messages.length; start += 3) {
     const window = messages.slice(start, start + 4)
     const text = window.map((row) => `${row.role}: ${row.text.replace(/\s+/g, ' ')}`).join('\n')
-    chunks.push({ chunkStart: start, text, messageIds: window.map((row) => row.sourceId), textHash: createHash('sha256').update(text).digest('hex') })
+    // The key is the user's own words in the window, not the whole multi-turn blob:
+    // a short intent is diluted below the similarity bar by surrounding assistant text.
+    const userText = window.filter((row) => row.role === 'user').map((row) => row.text.replace(/\s+/g, ' ')).join(' ').slice(0, 1200)
+    chunks.push({ chunkStart: start, text, key: userText || text, messageIds: window.map((row) => row.sourceId), textHash: createHash('sha256').update(text).digest('hex') })
     if (start + 4 >= messages.length) break
   }
   return chunks
@@ -47,12 +50,12 @@ function chunksOf(rows) {
 
 function vectorBytes(vector) { return Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength) }
 
-export async function indexSessions(db, report = () => {}, embed = localEmbed) {
-  const sessions = db.prepare('SELECT harness,sessionId FROM sessions ORDER BY harness,sessionId').all()
+export async function indexSessions(db, report = () => {}, embed = localEmbed, { cwd } = {}) {
+  const sessions = db.prepare("SELECT harness,sessionId FROM sessions WHERE (? IS NULL OR lower(replace(rtrim(cwd, '/'),char(92),'/'))=lower(replace(rtrim(?, '/'),char(92),'/'))) ORDER BY harness,sessionId").all(cwd || null, cwd || null)
   const selectRows = db.prepare("SELECT sourceId,role,body FROM messages WHERE harness=? AND sessionId=? AND role IN ('user','assistant') ORDER BY sourcePosition,sourceId")
   const selectHeld = db.prepare('SELECT id,chunkStart,textHash,modelId,vector FROM searchChunks WHERE harness=? AND sessionId=?')
-  const upsert = db.prepare(`INSERT INTO searchChunks(harness,sessionId,chunkStart,messageIds,text,textHash,modelId,vector)
-    VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(harness,sessionId,chunkStart) DO UPDATE SET messageIds=excluded.messageIds,text=excluded.text,textHash=excluded.textHash,modelId=excluded.modelId,vector=excluded.vector`)
+  const upsert = db.prepare(`INSERT INTO searchChunks(harness,sessionId,chunkStart,messageIds,text,keyText,textHash,modelId,vector)
+    VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(harness,sessionId,chunkStart) DO UPDATE SET messageIds=excluded.messageIds,text=excluded.text,keyText=excluded.keyText,textHash=excluded.textHash,modelId=excluded.modelId,vector=excluded.vector`)
   const idOf = db.prepare('SELECT id FROM searchChunks WHERE harness=? AND sessionId=? AND chunkStart=?')
   const deleteFts = db.prepare('DELETE FROM searchChunksFts WHERE rowid=?')
   const putFts = db.prepare('INSERT INTO searchChunksFts(rowid,text) VALUES(?,?)')
@@ -67,13 +70,13 @@ export async function indexSessions(db, report = () => {}, embed = localEmbed) {
       return !old || old.textHash !== chunk.textHash || old.modelId !== modelId
     })
     const vectors = []
-    for (let start = 0; start < changed.length; start += 24) vectors.push(...await embed(changed.slice(start, start + 24).map((chunk) => chunk.text)))
+    for (let start = 0; start < changed.length; start += 24) vectors.push(...await embed(changed.slice(start, start + 24).map((chunk) => chunk.key)))
     db.exec('BEGIN IMMEDIATE')
     try {
       for (const [index, chunk] of changed.entries()) {
         const old = held.get(chunk.chunkStart)
         if (old) deleteFts.run(old.id)
-        upsert.run(session.harness, session.sessionId, chunk.chunkStart, JSON.stringify(chunk.messageIds), chunk.text, chunk.textHash, modelId, vectorBytes(vectors[index]))
+        upsert.run(session.harness, session.sessionId, chunk.chunkStart, JSON.stringify(chunk.messageIds), chunk.text, chunk.key, chunk.textHash, modelId, vectorBytes(vectors[index]))
         const id = idOf.get(session.harness, session.sessionId, chunk.chunkStart).id
         putFts.run(id, chunk.text)
       }
@@ -90,7 +93,7 @@ export async function indexSessions(db, report = () => {}, embed = localEmbed) {
     if (changed.length) report(`${session.harness}/${session.sessionId}: indexed ${changed.length} changed windows`)
   }
   db.prepare('INSERT INTO indexState(stage,modelId,indexedAt,chunks) VALUES(?,?,?,?) ON CONFLICT(stage) DO UPDATE SET modelId=excluded.modelId,indexedAt=excluded.indexedAt,chunks=excluded.chunks')
-    .run('search', modelId, new Date().toISOString(), total)
+    .run('search', modelId, new Date().toISOString(), db.prepare('SELECT count(*) AS count FROM searchChunks').get().count)
   return { sessions: sessions.length, chunks: total, embedded }
 }
 
@@ -103,15 +106,20 @@ function cosine(a, b) {
 export async function searchSessions(db, query, options = {}, embed = localEmbed) {
   const tokens = [...new Set(query.match(/[\p{L}\p{N}_]+/gu) || [])].slice(0, 16)
   const termQuery = tokens.map((token) => `"${token.replaceAll('"', '')}"`).join(' OR ')
-  const keyword = termQuery ? db.prepare('SELECT rowid FROM searchChunksFts WHERE searchChunksFts MATCH ? ORDER BY bm25(searchChunksFts) LIMIT 50').all(termQuery).map((row) => row.rowid) : []
+  const keyword = termQuery ? db.prepare('SELECT rowid FROM searchChunksFts WHERE searchChunksFts MATCH ? ORDER BY bm25(searchChunksFts)').all(termQuery).map((row) => row.rowid) : []
   const rows = db.prepare(`SELECT c.*,s.cwd FROM searchChunks c JOIN sessions s ON s.harness=c.harness AND s.sessionId=c.sessionId
-    WHERE (? IS NULL OR c.harness=?) AND (? IS NULL OR s.cwd=?)`).all(options.harness || null, options.harness || null, options.cwd || null, options.cwd || null)
+    WHERE (? IS NULL OR c.harness=?) AND (? IS NULL OR rtrim(replace(s.cwd,char(92),'/'),'/') = rtrim(replace(?,char(92),'/'),'/') COLLATE NOCASE)`).all(options.harness || null, options.harness || null, options.cwd || null, options.cwd || null)
   const [queryVector] = await embed([query])
   const vector = rows.map((row) => ({ id: row.id, score: cosine(queryVector, new Float32Array(row.vector.buffer.slice(row.vector.byteOffset, row.vector.byteOffset + row.vector.byteLength))) }))
     .filter((item) => item.score >= 0.3).sort((a, b) => b.score - a.score).slice(0, 50)
   const byId = new Map(rows.map((row) => [row.id, row]))
+  const vectorScores = new Map(vector.map((item) => [item.id, item.score]))
   const scores = new Map()
-  for (const [rank, id] of keyword.entries()) if (byId.has(id)) scores.set(id, (scores.get(id) || 0) + 1 / (60 + rank + 1))
+  // Keyword matches only enter when the same chunk also clears the semantic bar. An
+  // OR-matched FTS row on a common token is otherwise unrelated history, not evidence.
+  for (const [rank, id] of keyword.entries()) {
+    if (byId.has(id) && vectorScores.has(id)) scores.set(id, (scores.get(id) || 0) + 1 / (60 + rank + 1))
+  }
   for (const [rank, item] of vector.entries()) scores.set(item.id, (scores.get(item.id) || 0) + 1 / (60 + rank + 1))
   return [...scores].sort((a, b) => b[1] - a[1]).slice(0, options.limit || 5).map(([id, score]) => {
     const row = byId.get(id)

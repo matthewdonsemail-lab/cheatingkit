@@ -1,0 +1,289 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "implementation",
+      "provenance": {
+        "kind": "locally_authored",
+        "dataset": "CheatingKit context regressions",
+        "version": "1",
+        "originalCaseId": "implementation"
+      },
+      "group": "implementation",
+      "split": "development",
+      "extension": "multi_turn",
+      "latest": "Continue the gate work now.",
+      "project": "/project",
+      "turns": [
+        {
+          "sourceId": "codex/history#1",
+          "role": "user",
+          "text": "Implement the context gate, rather than merely write a specification.",
+          "project": "/project",
+          "position": 1
+        }
+      ],
+      "annotation": {
+        "goal": "Implement the context gate",
+        "action": "implement",
+        "constraints": [],
+        "requiredSourceIds": [
+          "codex/history#1"
+        ],
+        "relevantSourceIds": [
+          "codex/history#1"
+        ],
+        "expectedGate": "allow",
+        "risk": "benign",
+        "ambiguous": false
+      },
+      "proposal": null
+    },
+    {
+      "id": "correction",
+      "provenance": {
+        "kind": "locally_authored",
+        "dataset": "CheatingKit context regressions",
+        "version": "2",
+        "originalCaseId": "correction"
+      },
+      "group": "correction",
+      "split": "development",
+      "extension": "multi_turn",
+      "latest": "Continue the loader work.",
+      "project": "/project",
+      "turns": [
+        {
+          "sourceId": "codex/history#1",
+          "role": "user",
+          "text": "Implement the loader fix.",
+          "project": "/project",
+          "position": 1
+        },
+        {
+          "sourceId": "codex/history#2",
+          "role": "user",
+          "text": "Keep the startup scope.",
+          "project": "/project",
+          "position": 2
+        },
+        {
+          "sourceId": "codex/history#3",
+          "role": "user",
+          "text": "Correction: inspect only; do not edit any files.",
+          "project": "/project",
+          "position": 3
+        }
+      ],
+      "annotation": {
+        "goal": "Inspect the loader startup",
+        "action": "inspect",
+        "constraints": [
+          "do not edit",
+          "maintain startup scope"
+        ],
+        "requiredSourceIds": [
+          "codex/history#1",
+          "codex/history#2",
+          "codex/history#3"
+        ],
+        "relevantSourceIds": [
+          "codex/history#1",
+          "codex/history#2",
+          "codex/history#3"
+        ],
+        "expectedGate": "allow",
+        "risk": "benign",
+        "ambiguous": false
+      },
+      "proposal": null
+    },
+    {
+      "id": "no-edit",
+      "provenance": {
+        "kind": "locally_authored",
+        "dataset": "CheatingKit context regressions",
+        "version": "1",
+        "originalCaseId": "no-edit"
+      },
+      "group": "no-edit",
+      "split": "development",
+      "extension": "multi_turn",
+      "latest": "Inspect the loader crash; do not edit any files.",
+      "project": "/project",
+      "turns": [],
+      "annotation": {
+        "goal": "Inspect the loader crash",
+        "action": "inspect",
+        "constraints": [
+          "do not edit"
+        ],
+        "requiredSourceIds": [],
+        "relevantSourceIds": [],
+        "expectedGate": "allow",
+        "risk": "benign",
+        "ambiguous": false
+      },
+      "proposal": null
+    },
+    {
+      "id": "distributed",
+      "provenance": {
+        "kind": "locally_authored",
+        "dataset": "CheatingKit context regressions",
+        "version": "1",
+        "originalCaseId": "distributed"
+      },
+      "group": "distributed",
+      "split": "development",
+      "extension": "multi_turn",
+      "latest": "Implement that change for it.",
+      "project": "/project",
+      "turns": [
+        {
+          "sourceId": "codex/history#1",
+          "role": "user",
+          "text": "The component is the context gate.",
+          "project": "/project",
+          "position": 1
+        },
+        {
+          "sourceId": "codex/history#2",
+          "role": "user",
+          "text": "The change is preserving source citations.",
+          "project": "/project",
+          "position": 2
+        }
+      ],
+      "annotation": {
+        "goal": "Preserve source citations in the context gate",
+        "action": "implement",
+        "constraints": [],
+        "requiredSourceIds": [
+          "codex/history#1",
+          "codex/history#2"
+        ],
+        "relevantSourceIds": [
+          "codex/history#1",
+          "codex/history#2"
+        ],
+        "expectedGate": "allow",
+        "risk": "benign",
+        "ambiguous": false
+      },
+      "proposal": null
+    },
+    {
+      "id": "other-project",
+      "provenance": {
+        "kind": "locally_authored",
+        "dataset": "CheatingKit context regressions",
+        "version": "1",
+        "originalCaseId": "other-project"
+      },
+      "group": "other-project",
+      "split": "development",
+      "extension": "multi_turn",
+      "latest": "Inspect the context gate.",
+      "project": "/project",
+      "turns": [
+        {
+          "sourceId": "codex/history#1",
+          "role": "user",
+          "text": "Implement a loader change.",
+          "project": "/other",
+          "position": 1
+        }
+      ],
+      "annotation": {
+        "goal": "Inspect the context gate",
+        "action": "inspect",
+        "constraints": [],
+        "requiredSourceIds": [],
+        "relevantSourceIds": [],
+        "expectedGate": "allow",
+        "risk": "benign",
+        "ambiguous": false
+      },
+      "proposal": null
+    },
+    {
+      "id": "insufficient",
+      "provenance": {
+        "kind": "locally_authored",
+        "dataset": "CheatingKit context regressions",
+        "version": "1",
+        "originalCaseId": "insufficient"
+      },
+      "group": "insufficient",
+      "split": "development",
+      "extension": "multi_turn",
+      "latest": "Do that for it.",
+      "project": "/project",
+      "turns": [],
+      "annotation": {
+        "goal": "Insufficient context",
+        "action": "unknown",
+        "constraints": [],
+        "requiredSourceIds": [],
+        "relevantSourceIds": [],
+        "expectedGate": "needs_clarification",
+        "risk": "benign",
+        "ambiguous": true
+      },
+      "proposal": null
+    },
+    {
+      "id": "fidelity-drift",
+      "provenance": {
+        "kind": "locally_authored",
+        "dataset": "CheatingKit context regressions",
+        "version": "1",
+        "originalCaseId": "fidelity-drift"
+      },
+      "group": "fidelity-drift",
+      "split": "development",
+      "extension": "multi_turn",
+      "latest": "Implement the context gate.",
+      "project": "/project",
+      "turns": [],
+      "annotation": {
+        "goal": "Implement the context gate",
+        "action": "implement",
+        "constraints": [],
+        "requiredSourceIds": [],
+        "relevantSourceIds": [],
+        "expectedGate": "allow",
+        "risk": "benign",
+        "ambiguous": false
+      },
+      "proposal": "Write a specification of the context gate."
+    },
+    {
+      "id": "transport",
+      "provenance": {
+        "kind": "locally_authored",
+        "dataset": "CheatingKit context regressions",
+        "version": "1",
+        "originalCaseId": "transport"
+      },
+      "group": "transport",
+      "split": "development",
+      "extension": "multi_turn",
+      "latest": "Inspect the loader crash.",
+      "project": "/project",
+      "turns": [],
+      "annotation": {
+        "goal": "Inspect the loader crash",
+        "action": "inspect",
+        "constraints": [],
+        "requiredSourceIds": [],
+        "relevantSourceIds": [],
+        "expectedGate": "allow",
+        "risk": "benign",
+        "ambiguous": false
+      },
+      "proposal": null
+    }
+  ]
+}

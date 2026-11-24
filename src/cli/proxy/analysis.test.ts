@@ -1,3 +1,4 @@
+import { createMessageGate } from './gate.js'
 import { expect, test } from 'bun:test'
 import { createCodexAnalysis } from './analysis.js'
 import { validateAnalysisProfile } from './analysisProfile.js'
@@ -68,7 +69,7 @@ test('apply mode changes only the latest plain user text and relays task provide
   } })
   const analyze = createCodexAnalysis({ mode: 'apply', model: 'analysis-model', upstreamBaseUrl: 'https://analysis.example/v1',
     contextForPrompt: async () => 'source evidence', fetchAnalysis: async () => Response.json(proposal) })
-  const proxy = createProxyServer({ port: 0, upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: 'task-secret', analyzeCodexRequest: analyze })
+  const proxy = createProxyServer({ credentialMode: 'provider', gate: createMessageGate({ mode: 'off' }), port: 0, upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: 'task-secret', analyzeCodexRequest: analyze })
   try {
     const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, { method: 'POST', headers: { authorization: 'Bearer harness-secret' }, body: raw })
     expect(await response.text()).toContain('response.completed')
@@ -104,7 +105,7 @@ test('client cancellation aborts analysis and does not call task provider', asyn
   const analyze = createCodexAnalysis({ mode: 'apply', model: 'analysis-model', upstreamBaseUrl: 'https://analysis.example/v1', contextForPrompt: async () => '',
     fetchAnalysis: async (_url: URL, init: RequestInit) => { analysisSignal = init.signal as AbortSignal; return new Promise((_resolve, reject) => analysisSignal!.addEventListener('abort', () => reject(new Error('aborted')), { once: true })) },
   })
-  const proxy = createProxyServer({ port: 0, upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, analyzeCodexRequest: analyze })
+  const proxy = createProxyServer({ credentialMode: 'provider', gate: createMessageGate({ mode: 'off' }), port: 0, upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, analyzeCodexRequest: analyze })
   try {
     const controller = new AbortController()
     const pending = fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, { method: 'POST', body: raw, signal: controller.signal })
@@ -131,4 +132,59 @@ test('a pasted proxy error payload is never sent to the analysis model', async (
 
 test('analysis upstream cannot loop back into the same proxy port', () => {
   expect(() => createCodexAnalysis({ mode: 'apply', model: 'm', proxyPort: 4178, upstreamBaseUrl: 'http://localhost:4178/v1' })).toThrow('cannot point back')
+})
+
+
+test('rewrite receives developer hook context and exposes the exact shared evidence for validation', async () => {
+  let sent: any
+  const analyze = createCodexAnalysis({ mode: 'apply', model: 'analysis', upstreamBaseUrl: 'https://analysis.example/v1',
+    contextForPrompt: async () => '[codex/project#1] Gate implementation is on the feature branch.',
+    fetchAnalysis: async (_url, init) => { sent = JSON.parse(init.body as string); return Response.json(proposal) },
+  })
+  const result = await analyze(JSON.stringify({ input: [
+    { role: 'user', content: '<environment_context><cwd>C:\\project</cwd></environment_context>' },
+    { role: 'user', content: 'Implement the remaining context fix; the single pass report was historical.' },
+    { role: 'developer', content: 'CheatingKit local session evidence. The gate is installed; PR remains draft.' },
+  ] }))
+  expect(sent.input).toContain('The gate is installed; PR remains draft.')
+  expect(sent.instructions).toContain('historical report')
+  expect(result.decision.context.cwd).toBe('C:\\project')
+  expect(result.decision.context.evidence).toContain('feature branch')
+})
+
+
+test('an unchanged successful proposal remains eligible for independent validation', async () => {
+  const analyze = createCodexAnalysis({ mode: 'apply', model: 'analysis', upstreamBaseUrl: 'https://analysis.example/v1', contextForPrompt: async () => '', fetchAnalysis: async () => Response.json({ output_text: 'Latest task' }) })
+  const result = await analyze(raw)
+  expect(result.body).toBe(raw)
+  expect(result.decision).toMatchObject({ proposedText: 'Latest task', applied: false, reason: 'wording already clear; proposal unchanged' })
+})
+
+
+for(const status of ['refused','needs_context']) test(`typed analysis ${status} never becomes a rewrite`,async()=>{
+ const analyze=createCodexAnalysis({mode:'apply',structuredOutput:true,model:'analysis',upstreamBaseUrl:'https://analysis.invalid/v1',contextForPrompt:async()=>'',fetchAnalysis:async()=>Response.json({output_text:JSON.stringify({status,proposedText:null,reason:'Explicit analysis status'})})})
+ const result=await analyze(raw)
+ expect(result.body).toBe(raw);expect(result.decision.proposedText).toBeNull();expect(result.decision.status).toBe(status)
+})
+
+test('typed analysis rejects refusal text, unknown states and fabricated unchanged proposals',async()=>{
+ for(const text of ['I cannot help with this task.',JSON.stringify({status:'unbounded',reason:'invalid'}),JSON.stringify({status:'unchanged',proposedText:'A changed task',reason:'invalid'})]){
+  const analyze=createCodexAnalysis({mode:'apply',structuredOutput:true,model:'analysis',upstreamBaseUrl:'https://analysis.invalid/v1',contextForPrompt:async()=>'',fetchAnalysis:async()=>Response.json({output_text:text})})
+  const result=await analyze(raw);expect(result.decision.applied).toBe(false);expect(result.decision.proposedText).toBeNull()
+ }
+ expect(()=>validateAnalysisProfile({mode:'apply',model:'model',upstreamBaseUrl:'https://analysis.invalid/v1',apiKeyEnv:null,originalRequestFallback:'yes'})).toThrow('boolean')
+})
+
+test('typed unchanged null preserves exact original request bytes without model reconstruction',async()=>{
+  const text='Inspect\tthis file.\n  Preserve spacing and Unicode: café.'
+  const bytes=' { "input" : '+JSON.stringify(text)+', "stream": true } '
+  let instructions=''
+  const analyze=createCodexAnalysis({mode:'apply',structuredOutput:true,model:'analysis-unchanged-null',upstreamBaseUrl:'https://analysis.invalid/v1',contextForPrompt:async()=>'',fetchAnalysis:async(_url,init)=>{
+    instructions=JSON.parse(init.body as string).instructions
+    return Response.json({output_text:JSON.stringify({status:'unchanged',proposedText:null,reason:'No wording change needed'})})
+  }})
+  const result=await analyze(bytes)
+  expect(result.body).toBe(bytes)
+  expect(result.decision).toMatchObject({status:'unchanged',proposedText:text,applied:false})
+  expect(instructions).toContain('unchanged requires proposedText:null')
 })

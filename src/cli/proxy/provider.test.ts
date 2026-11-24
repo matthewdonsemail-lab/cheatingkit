@@ -11,9 +11,12 @@ test('the analysis provider cannot also be the main Codex provider', () => {
   process.env.CHEATINGKIT_HOME = home
   try {
     saveAnalysisProfile({ mode: 'suggest', protocol: 'chat-completions', upstreamBaseUrl: 'https://analysis.example/v1', model: 'analysis-model', apiKeyEnv: null })
-    const profile = { provider: 'chat-completions', upstreamBaseUrl: 'https://analysis.example/v1', model: 'task-model', apiKeyEnv: null }
+    const profile = { provider: 'chat-completions', upstreamBaseUrl: 'https://analysis.example/v1', model: 'analysis-model', apiKeyEnv: null }
     expect(() => saveProfile(profile)).toThrow('analysis provider cannot also be the main')
     expect(loadProfile()).toBeNull()
+    // A different model on the same endpoint is not the same provider.
+    expect(saveProfile({ ...profile, model: 'task-model' }).model).toBe('task-model')
+    saveAnalysisProfile({ mode: 'suggest', protocol: 'chat-completions', upstreamBaseUrl: 'https://other.example/v1', model: 'analysis-model', apiKeyEnv: null })
     expect(saveProfile({ ...profile, upstreamBaseUrl: 'https://task.example/v1' }).upstreamBaseUrl).toBe('https://task.example/v1')
   } finally {
     if (previous === undefined) delete process.env.CHEATINGKIT_HOME

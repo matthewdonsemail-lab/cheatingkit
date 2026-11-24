@@ -4,6 +4,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { addCodexRoute, installCodexRoute, removeCodexRoute, removeCodexRouteFromDisk } from './codex.js'
 
+test('native credential route enables OpenAI auth and restores original settings', () => {
+  const original = 'model = "chosen-model"\n'
+  const patch = addCodexRoute(original, 'http://127.0.0.1:4178/v1', null, { nativeCredentials: true })
+  expect(patch.content).toContain('requires_openai_auth = true')
+  expect(removeCodexRoute(patch.content, patch)).toBe(original)
+})
+
 test('adds and removes a root route while retaining unrelated Codex settings', () => {
   const original = 'model = "chosen-model"\r\nopenai_base_url = "https://old.example/v1"\r\n[features]\r\nweb_search = true\r\n'
   const patch = addCodexRoute(original, 'http://127.0.0.1:4178/v1')

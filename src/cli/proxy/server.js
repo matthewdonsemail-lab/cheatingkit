@@ -1,3 +1,4 @@
+import { createMessageGate } from './gate.js'
 import { anthropicPath, relayAnthropicRequest } from './anthropic.js'
 import { relayChatCompletions } from './chatCompletions.js'
 import { relayCodexAnthropic } from './codexAnthropic.js'
@@ -20,27 +21,51 @@ export function validateUpstream(raw) {
   return url
 }
 
-export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, responsesProtocol = 'responses', anthropicUpstreamBaseUrl, anthropicApiKey, hermesUpstreamBaseUrl, hermesApiKey, fetchUpstream = fetch, analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest, attemptStore } = {}) {
+export function validateResponsesUpstream(raw) {
+  const url = new URL(raw)
+  if (url.pathname.endsWith('/v1')) return validateUpstream(raw)
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || !url.pathname.endsWith('/backend-api/codex')) {
+    throw new Error('Responses upstream must end in /v1 or /backend-api/codex without credentials, query, or fragment')
+  }
+  return url
+}
+
+export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, responsesProtocol = 'responses', anthropicUpstreamBaseUrl, anthropicApiKey, hermesUpstreamBaseUrl, hermesApiKey, fetchUpstream = fetch, analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest, attemptStore, gate = createMessageGate(), escalate, credentialMode = 'native' } = {}) {
+  if (!['native', 'provider'].includes(credentialMode)) throw new Error('Credential mode must be native or provider')
   if (!upstreamBaseUrl && !anthropicUpstreamBaseUrl && !hermesUpstreamBaseUrl) throw new Error('Configure at least one proxy upstream')
-  const upstream = upstreamBaseUrl ? validateUpstream(upstreamBaseUrl) : null
+  const upstream = upstreamBaseUrl ? (responsesProtocol === 'responses' ? validateResponsesUpstream(upstreamBaseUrl) : validateUpstream(upstreamBaseUrl)) : null
   const anthropicUpstream = anthropicUpstreamBaseUrl ? validateUpstream(anthropicUpstreamBaseUrl) : null
   const hermesUpstream = hermesUpstreamBaseUrl ? validateUpstream(hermesUpstreamBaseUrl) : null
   for (const target of [upstream, anthropicUpstream, hermesUpstream].filter(Boolean)) {
     if (['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname) && Number(target.port) === port) throw new Error('Proxy upstream cannot point back to CheatingKit')
   }
   const server = Bun.serve({
-    hostname: '127.0.0.1', port,
+    hostname: '127.0.0.1', port, idleTimeout: 0,
     async fetch(request) {
       const path = new URL(request.url).pathname
       if (path === '/health' && request.method === 'GET') return Response.json({ service: 'cheatingkit-proxy', pid: process.pid, port: server.port })
-      const relayTracked = (harness, protocol, provider, analyze, relay) => attemptStore
-        ? trackProxyRequest(request, { store: attemptStore, harness, protocol, provider, analyze, relay })
-        : relay(analyze)
+      if (upstream && responsesProtocol === 'responses' && path === '/v1/models' && request.method === 'GET') {
+        const target = new URL('models', `${upstream.href}/`)
+        target.search = new URL(request.url).search
+        const headers = relayHeaders(request.headers)
+        // The local observer must receive plain SSE, including with native clients
+        // that advertise encodings the fetch runtime cannot decode.
+        headers.set('accept-encoding', 'identity')
+        if (credentialMode === 'provider' && apiKey !== undefined) {
+          headers.delete('authorization')
+          if (apiKey) headers.set('authorization', `Bearer ${apiKey}`)
+        }
+        try {
+          const response = await fetchUpstream(target, { headers, signal: request.signal, redirect: 'manual' })
+          return new Response(response.body, { status: response.status, headers: relayHeaders(response.headers) })
+        } catch { return Response.json({ error: { message: 'Model discovery failed' } }, { status: 502 }) }
+      }
+      const relayTracked = (harness, protocol, provider, analyze, relay) => trackProxyRequest(request, { store: attemptStore, harness, protocol, provider, analyze, relay, gate, escalate })
       if (anthropicUpstream && anthropicPath(path)) {
-        const relay = (analyze) => relayAnthropicRequest(request, { upstreamBaseUrl: anthropicUpstream.href, apiKey: anthropicApiKey, fetchUpstream, analyzeMessagesRequest: analyze })
+        const relay = (analyze) => relayAnthropicRequest(request, { upstreamBaseUrl: anthropicUpstream.href, apiKey: credentialMode === 'provider' ? anthropicApiKey : undefined, fetchUpstream, analyzeMessagesRequest: analyze })
         return path === '/v1/messages' && request.method === 'POST' ? relayTracked('claude', 'messages', 'anthropic', analyzeClaudeMessagesRequest, relay) : relay(analyzeClaudeMessagesRequest)
       }
-      if (hermesUpstream && path === '/v1/chat/completions' && request.method === 'POST') return relayTracked('hermes', 'chat-completions', 'chat-completions', analyzeHermesRequest, (analyze) => relayChatCompletions(request, { upstreamBaseUrl: hermesUpstream.href, apiKey: hermesApiKey, fetchUpstream, analyzeHermesRequest: analyze }))
+      if (hermesUpstream && path === '/v1/chat/completions' && request.method === 'POST') return relayTracked('hermes', 'chat-completions', 'chat-completions', analyzeHermesRequest, (analyze) => relayChatCompletions(request, { upstreamBaseUrl: hermesUpstream.href, apiKey: credentialMode === 'provider' ? hermesApiKey : undefined, fetchUpstream, analyzeHermesRequest: analyze }))
       if (!upstream || path !== '/v1/responses' || request.method !== 'POST') return new Response('Not found', { status: 404 })
       if (responsesProtocol === 'anthropic') return relayTracked('codex', 'responses', 'anthropic', analyzeCodexRequest, (analyze) => relayCodexAnthropic(request, { upstreamBaseUrl: upstream.href, apiKey, fetchUpstream, analyzeCodexRequest: analyze }))
       if (responsesProtocol === 'chat-completions') return relayTracked('codex', 'responses', 'chat-completions', analyzeCodexRequest, (analyze) => relayCodexChat(request, { upstreamBaseUrl: upstream.href, apiKey, fetchUpstream, analyzeCodexRequest: analyze }))
@@ -48,7 +73,10 @@ export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, respon
       const target = new URL('responses', `${upstream.href}/`)
       return relayTracked('codex', 'responses', 'responses', analyzeCodexRequest, async (analyze) => { try {
         const headers = relayHeaders(request.headers)
-        if (apiKey !== undefined) {
+        // The local observer must receive plain SSE, including with native clients
+        // that advertise encodings the fetch runtime cannot decode.
+        headers.set('accept-encoding', 'identity')
+        if (credentialMode === 'provider' && apiKey !== undefined) {
           headers.delete('authorization')
           if (apiKey) headers.set('authorization', `Bearer ${apiKey}`)
         }

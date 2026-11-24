@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { openDatabase } from '../storage/client.js'
 import { attemptDatabasePath, observeResponse, openAttemptStore, requestDetails, trackProxyRequest } from './attempts.js'
 import { createProxyServer } from './server.js'
-import { inspectAttempts } from './attemptsCli.js'
+import { inspectAttempts, formatAttemptSummary } from './attemptsCli.js'
 import { join } from 'node:path'
 
 function fixture() {
@@ -18,9 +18,10 @@ test('isolated proxy home uses its own corpus database path', () => {
 
 test('request details select only latest plain user text and model, excluding tool and media payloads', () => {
   const parsed = requestDetails(JSON.stringify({ model: 'gpt-test', input: [{ role: 'user', content: [{ type: 'input_text', text: 'Inspect this' }] }, { type: 'function_call', arguments: 'secret tool input' }] }), 'responses')
-  expect(parsed).toEqual({ model: 'gpt-test', originalText: 'Inspect this' })
+  expect(parsed).toEqual({ model: 'gpt-test', originalText: 'Inspect this', eligible: true })
   const media = requestDetails(JSON.stringify({ model: 'claude-test', messages: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }, { type: 'image', source: { data: 'secret image' } }] }] }), 'messages')
   expect(media.originalText).toBeNull()
+  expect(media.eligible).toBe(false)
 })
 
 test('streaming request links decision and evidence to observed warning after SSE completion', async () => {
@@ -134,4 +135,51 @@ test('inspection filters comparable attempts and exposes one request by ID', () 
   const one: string[] = []
   inspectAttempts([id], { store: another, output: (text) => one.push(text) })
   expect(JSON.parse(one[0]).requestId).toBe(id)
+})
+
+
+for (const withDelta of [false, true]) test(`native named SSE events capture completed refusal without duplicate text (deltas=${withDelta})`, async () => {
+  const { store, close } = fixture()
+  try {
+    const requestId = store.begin({ harness: 'codex', protocol: 'responses', provider: 'responses' })
+    const text = 'I cannot help with that request.'
+    const wire = (withDelta ? `event: response.output_text.delta\ndata: ${JSON.stringify({ delta: text })}\n\n` : '') +
+      `event: response.output_item.done\ndata: ${JSON.stringify({ item: { content: [{ type: 'output_text', text }] } })}\n\n` +
+      `event: response.completed\ndata: ${JSON.stringify({ response: { output: [{ content: [{ type: 'output_text', text }] }] } })}\n\n`
+    const observed = observeResponse(new Response(wire, { headers: { 'content-type': 'text/event-stream' } }), { store, requestId, protocol: 'responses' })
+    expect(await observed.text()).toBe(wire)
+    expect(store.get(requestId)).toMatchObject({ responseCompleted: true, responseExcerpt: text, observation: 'potential_refusal' })
+  } finally { close() }
+})
+
+
+test('native SSE without a Content-Type is observed before a trailing connection error', async () => {
+  const { store, close } = fixture()
+  try {
+    const requestId = store.begin({ harness: 'codex', protocol: 'responses', provider: 'responses' })
+    let pull = 0
+    const wire = 'event: response.output_text.delta\ndata: {"delta":"4"}\n\nevent: response.completed\ndata: {}\n\n'
+    const upstream = new ReadableStream({ pull(controller) {
+      if (pull++ === 0) controller.enqueue(new TextEncoder().encode(wire))
+      else controller.error(new Error('The connection was closed.'))
+    } })
+    const observed = observeResponse(new Response(upstream), { store, requestId, protocol: 'responses' })
+    await expect(observed.text()).rejects.toThrow('The connection was closed.')
+    expect(store.get(requestId)).toMatchObject({ responseCompleted: true, responseExcerpt: '4', observation: 'completed', error: null })
+  } finally { close() }
+})
+
+
+test('readable attempt summary exposes revision stages and warnings without hiding the response', () => {
+  const text = formatAttemptSummary({ requestId: 'trace', analysisMode: 'apply', proposedText: 'Revised', analysisApplied: true,
+    observation: 'stream_error', error: 'Connection closed', responseExcerpt: 'I cannot help with that request.',
+    gateDecision: { mode: 'enforce', decision: 'allow', terminationReason: 'validated',
+      evaluations: [{ stage: 'validate', revision: 0, faithful: false, reason: 'Changed action' }, { stage: 'validate', revision: 1, faithful: true, reason: 'Restored action' }],
+      revisions: [{ revision: 1, reason: 'Repair action' }] } })
+  expect(text).toContain('Initial proposal recorded: yes | Revisions recorded: 1')
+  expect(text).toContain('Candidate 1 / validate: not faithful')
+  expect(text).toContain('Candidate 2 / validate: faithful')
+  expect(text).toContain('WARNING: Connection closed')
+  expect(text).toContain('I cannot help with that request.')
+  expect(formatAttemptSummary({ requestId: 'blocked', gateDecision: { mode: 'observe', decision: 'block' } })).toContain('observe mode does not enforce')
 })

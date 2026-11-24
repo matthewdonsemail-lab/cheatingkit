@@ -30,5 +30,7 @@ export async function serveMcp() {
       return { content: [{ type: 'text', text: text || 'No indexed context found.' }] }
     } finally { db.close() }
   })
+  const repl = (await import('./repl/mcp.js')).registerReplTools(server, config)
+  void repl
   await server.connect(new StdioServerTransport())
 }
