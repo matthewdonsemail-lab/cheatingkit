@@ -150,3 +150,20 @@ for (const withDelta of [false, true]) test(`native named SSE events capture com
     expect(store.get(requestId)).toMatchObject({ responseCompleted: true, responseExcerpt: text, observation: 'potential_refusal' })
   } finally { close() }
 })
+
+
+test('native SSE without a Content-Type is observed before a trailing connection error', async () => {
+  const { store, close } = fixture()
+  try {
+    const requestId = store.begin({ harness: 'codex', protocol: 'responses', provider: 'responses' })
+    let pull = 0
+    const wire = 'event: response.output_text.delta\ndata: {"delta":"4"}\n\nevent: response.completed\ndata: {}\n\n'
+    const upstream = new ReadableStream({ pull(controller) {
+      if (pull++ === 0) controller.enqueue(new TextEncoder().encode(wire))
+      else controller.error(new Error('The connection was closed.'))
+    } })
+    const observed = observeResponse(new Response(upstream), { store, requestId, protocol: 'responses' })
+    await expect(observed.text()).rejects.toThrow('The connection was closed.')
+    expect(store.get(requestId)).toMatchObject({ responseCompleted: true, responseExcerpt: '4', observation: 'completed', error: null })
+  } finally { close() }
+})

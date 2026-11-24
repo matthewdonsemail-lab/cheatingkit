@@ -100,7 +100,7 @@ function parseAttempt(row) {
 
 export function observeResponse(response, { store, requestId, protocol }) {
   const status = response.status
-  const isStream = response.headers.get('content-type')?.includes('text/event-stream')
+  let isStream = response.headers.get('content-type')?.includes('text/event-stream')
   if (!response.body) {
     store.finish(requestId, { httpStatus: status, responseCompleted: true, observation: status >= 400 ? 'http_error' : 'completed' })
     const headers = new Headers(response.headers)
@@ -125,7 +125,7 @@ export function observeResponse(response, { store, requestId, protocol }) {
     const observation = providerWarning ? 'potential_cyber_warning' : error ? (error === streamError ? 'provider_error' : 'stream_error') : status >= 400 ? 'http_error' : explicitRefusal ? 'observed_refusal' : warningPattern.test(excerpt) && refusalPattern.test(excerpt) ? 'potential_cyber_warning' : refusalPattern.test(excerpt) ? 'potential_refusal' : 'completed'
     try {
       const gateRecord = store.get?.(requestId)?.gateDecision
-      if (gateRecord) store.gateDecision(requestId, { ...gateRecord, responseTransport: { contentType: response.headers.get('content-type'), contentEncoding: response.headers.get('content-encoding'), receivedBytes, providerCompleted } })
+      if (gateRecord) store.gateDecision(requestId, { ...gateRecord, responseTransport: { contentType: response.headers.get('content-type'), contentEncoding: response.headers.get('content-encoding'), receivedBytes, providerCompleted, format: isStream ? 'sse' : 'json' } })
     } catch {}
     try { store.finish(requestId, { httpStatus: status, responseCompleted: completed, responseExcerpt: excerpt, observation, error: error || streamError }) } catch { /* audit failure must not change provider response */ }
   }
@@ -160,6 +160,7 @@ export function observeResponse(response, { store, requestId, protocol }) {
         }
         receivedBytes += item.value.byteLength
         const text = decoder.decode(item.value, { stream: true })
+        if (!isStream && !response.headers.has('content-type') && /^\s*(?:event:|data:|:)/.test(wire + text)) isStream = true
         if (isStream) {
           wire += text
           const lines = wire.split(/\r?\n/)
@@ -262,7 +263,7 @@ export async function trackProxyRequest(request, { store, harness, protocol, pro
   } catch (error) {
     try {
       const gateRecord = store.get?.(requestId)?.gateDecision
-      if (gateRecord) store.gateDecision(requestId, { ...gateRecord, responseTransport: { contentType: response.headers.get('content-type'), contentEncoding: response.headers.get('content-encoding'), receivedBytes, providerCompleted } })
+      if (gateRecord) store.gateDecision(requestId, { ...gateRecord, responseTransport: { contentType: response.headers.get('content-type'), contentEncoding: response.headers.get('content-encoding'), receivedBytes, providerCompleted, format: isStream ? 'sse' : 'json' } })
     } catch {}
     try { store.finish(requestId, { observation: 'relay_error', error: error.message }) } catch {}
     throw error
