@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -33,7 +33,11 @@ test('starts one detached proxy, reports health, and stops it', async () => {
     expect(restarted.status).toBe(0)
     expect(JSON.parse(readFileSync(join(home, 'proxy.json'), 'utf8')).pid).not.toBe(pid)
     const response = await fetch(`http://127.0.0.1:${port}/v1/responses`, { method: 'POST', body: '{}' })
+    const requestId = response.headers.get('x-cheatingkit-request-id')
     expect((await response.json()).id).toBe('mock')
+    expect(requestId).toBeTruthy()
+    expect(JSON.parse(run('attempts', requestId!).stdout).requestId).toBe(requestId)
+    expect(existsSync(join(home, 'sessions.db'))).toBe(true)
     expect(JSON.parse(run('status').stdout).running).toBe(true)
     expect(run('install', 'codex', '--port', String(port), '--upstream', `http://127.0.0.1:${upstream.port}/v1`).status).toBe(0)
     expect(readFileSync(codexConfig, 'utf8')).toContain(`base_url = "http://127.0.0.1:${port}/v1"`)

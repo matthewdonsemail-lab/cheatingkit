@@ -4,7 +4,7 @@ import { relayCodexAnthropic } from './codexAnthropic.js'
 import { relayCodexChat } from './codexChat.js'
 import { trackProxyRequest } from './attempts.js'
 
-const hopHeaders = new Set(['connection', 'content-length', 'host', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade'])
+const hopHeaders = new Set(['connection', 'content-length', 'host', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'x-cheatingkit-session-id', 'x-cheatingkit-source-id'])
 
 function relayHeaders(source) {
   const headers = new Headers(source)

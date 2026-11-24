@@ -88,11 +88,14 @@ test('ingress tracker links analysis decision and provider stream without changi
 
 test('proxy routes record a streamed Codex completion and a Claude provider failure', async () => {
   const { store, close } = fixture()
-  const server = createProxyServer({ port: 0, upstreamBaseUrl: 'https://responses.example/v1', anthropicUpstreamBaseUrl: 'https://messages.example/v1', attemptStore: store, fetchUpstream: async (url) => url.href.includes('messages.example')
-    ? new Response('{"type":"error"}', { status: 429, headers: { 'content-type': 'application/json' } })
-    : new Response('data: {"type":"response.output_text.delta","delta":"Completed"}\n\n', { headers: { 'content-type': 'text/event-stream' } }) })
+  const server = createProxyServer({ port: 0, upstreamBaseUrl: 'https://responses.example/v1', anthropicUpstreamBaseUrl: 'https://messages.example/v1', attemptStore: store, fetchUpstream: async (url, init) => {
+    expect(init.headers.get('x-cheatingkit-session-id')).toBeNull()
+    return url.href.includes('messages.example')
+      ? new Response('{"type":"error"}', { status: 429, headers: { 'content-type': 'application/json' } })
+      : new Response('data: {"type":"response.output_text.delta","delta":"Completed"}\n\n', { headers: { 'content-type': 'text/event-stream' } })
+  } })
   try {
-    const codex = await fetch(`http://127.0.0.1:${server.port}/v1/responses`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'gpt-test', input: 'Do task', stream: true }) })
+    const codex = await fetch(`http://127.0.0.1:${server.port}/v1/responses`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-cheatingkit-session-id': 's1' }, body: JSON.stringify({ model: 'gpt-test', input: 'Do task', stream: true }) })
     const codexId = codex.headers.get('x-cheatingkit-request-id')
     expect(codexId).toBeTruthy()
     await codex.text()
@@ -103,6 +106,18 @@ test('proxy routes record a streamed Codex completion and a Claude provider fail
     await claude.text()
     expect(store.get(claudeId).observation).toBe('http_error')
     expect(store.list(2)).toHaveLength(2)
+  } finally { server.stop(true); close() }
+})
+
+test('translated Codex to Chat Completions route records the selected provider and returned text', async () => {
+  const { store, close } = fixture()
+  const server = createProxyServer({ port: 0, upstreamBaseUrl: 'https://chat.example/v1', responsesProtocol: 'chat-completions', attemptStore: store, fetchUpstream: async () => Response.json({ id: 'chat_1', model: 'task-model', created: 123, choices: [{ index: 0, message: { role: 'assistant', content: 'Done from chat' }, finish_reason: 'stop' }] }) })
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.port}/v1/responses`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'task-model', input: 'Original task', stream: false }) })
+    expect(response.status).toBe(200)
+    const requestId = response.headers.get('x-cheatingkit-request-id')!
+    await response.text()
+    expect(store.get(requestId)).toMatchObject({ harness: 'codex', protocol: 'responses', provider: 'chat-completions', originalText: 'Original task', responseExcerpt: 'Done from chat', responseCompleted: true })
   } finally { server.stop(true); close() }
 })
 
