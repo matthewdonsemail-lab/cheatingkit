@@ -13,7 +13,9 @@ test('provider profile stores a model and credential reference, never a secret',
     saveProfile(profile)
     expect(loadProfile()).toEqual(profile)
     expect(() => validateProfile({ ...profile, apiKeyEnv: 'BAD-NAME' })).toThrow()
-    expect(() => validateProfile({ ...profile, provider: 'anthropic' })).toThrow()
+    expect(validateProfile({ ...profile, provider: 'anthropic' }).provider).toBe('anthropic')
+    expect(() => validateProfile({ ...profile, provider: 'anthropic', apiKeyEnv: null })).toThrow()
+    expect(() => validateProfile({ ...profile, provider: 'anthropic', upstreamBaseUrl: 'https://other.example/v1' })).toThrow()
   } finally {
     if (previous === undefined) delete process.env.CHEATINGKIT_HOME
     else process.env.CHEATINGKIT_HOME = previous

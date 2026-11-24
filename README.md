@@ -39,7 +39,7 @@ ck timeline
 | `ck index` | Import new conversations and update the local semantic search index. |
 | `ck context --prompt "..."` | Preview the context a prompt would receive. |
 | `ck hooks install` / `ck hooks remove` | Add or remove CheatingKit's prompt integrations. |
-| `ck proxy setup` | Choose a Responses provider and model in an interactive setup, then connect Codex. |
+| `ck proxy setup` | Choose OpenAI Responses, Anthropic Messages, or a Responses-compatible provider and model, then connect Codex. |
 | `ck proxy setup claude` | Connect Claude Code to the local Anthropic Messages relay using an Anthropic API key from an environment variable. |
 | `ck proxy setup hermes` | Choose a Chat Completions provider and model, then connect Hermes to the local relay. |
 | `ck proxy start` / `ck proxy status` / `ck proxy stop` | Run and inspect the local provider relay. |
@@ -59,7 +59,7 @@ Claude Code and Codex use `UserPromptSubmit` hooks. Hermes uses a `pre_llm_call`
 
 ### Codex provider proxy preview
 
-The proxy is a separate path from the prompt hooks. Run the interactive provider setup to choose OpenAI API or a custom endpoint that implements the OpenAI Responses API, enter the model ID, and name the environment variable containing its API key. The key stays in your environment; CheatingKit stores only the variable name. For a keyless local endpoint, leave that field blank.
+The proxy is a separate path from the prompt hooks. Run the interactive provider setup to choose OpenAI Responses, Anthropic Messages, or a custom endpoint that implements the OpenAI Responses API. Enter the model ID and the environment variable containing its API key. The key stays in your environment; CheatingKit stores only the variable name. Custom local Responses endpoints can be keyless.
 
 ```sh
 ck proxy setup
@@ -68,11 +68,11 @@ ck proxy remove codex
 ck proxy stop
 ```
 
-Set the chosen key environment variable before `ck proxy setup` and keep it available when starting the proxy again. The installer starts a detached loopback server, adds a dedicated `cheatingkit` model provider and selected model to Codex's configuration, and records the previous values for restoration. The local provider disables WebSockets because this route serves HTTP Responses requests and SSE streams. Restart Codex after installing or removing the route. The upstream provider must implement `/v1/responses` for both normal and streaming requests. A Chat Completions-only provider cannot serve this Codex route without a cross-protocol adapter. Optional corpus-backed analysis is configured with `ck proxy analysis setup`; [issue #10](https://github.com/matthewdonsemail-lab/cheatingkit/issues/10) tracks additional adapters.
+Set the chosen key environment variable before `ck proxy setup` and keep it available when starting the proxy starts again. The installer starts a loopback server, adds a `cheatingkit` model provider and selected model to Codex's configuration, and records the previous values for restoration. It disables WebSockets for the HTTP Responses route. Restart Codex after installing or removing the route. OpenAI and custom Responses providers must implement `/v1/responses`. The Anthropic choice translates supported Codex `/v1/responses` requests into Anthropic `/v1/messages`, then translates text, function calls, usage, errors, and streaming events back to Codex. It preserves system and developer instructions, conversation turns, supported images, and function tool calls and results. The installer disables Codex hosted web search for this route and restores its previous setting on removal; namespace function tools remain available. Unsupported request features, including previous response IDs, opaque encrypted reasoning replay, non-image media, and built-in tool formats, return an explicit error. Anthropic thinking signatures cannot be converted into Codex encrypted reasoning state, so this route does not provide reasoning-state continuity. `reasoning.summary` is advisory and no summary is synthesized. Optional corpus-backed analysis is configured with `ck proxy analysis setup`; [issue #10](https://github.com/matthewdonsemail-lab/cheatingkit/issues/10) tracks additional adapters.
 
 ### Claude Code provider proxy preview
 
-Set `ANTHROPIC_API_KEY` in the terminal that runs CheatingKit, then run `ck proxy setup claude`. This stores the environment variable name in a separate Anthropic profile, starts the local server, and sets `env.ANTHROPIC_BASE_URL` in Claude Code's user settings. Restart Claude Code. Requests to `/v1/messages` and `/v1/messages/count_tokens` are relayed to `https://api.anthropic.com/v1`, including system instructions, conversation turns, tools, images, and streaming events. The proxy substitutes the provider key, relays HTTP errors, and cancels upstream work when the client disconnects. `ck proxy remove claude` restores the prior setting; `ck proxy stop` stops the server. The Anthropic and Codex routes have separate provider settings and can share the local server. This route does not translate Codex Responses requests into Anthropic Messages.
+Set `ANTHROPIC_API_KEY` in the terminal that runs CheatingKit, then run `ck proxy setup claude`. This stores the environment variable name in a separate Anthropic profile, starts the local server, and sets `env.ANTHROPIC_BASE_URL` in Claude Code's user settings. Restart Claude Code. Requests to `/v1/messages` and `/v1/messages/count_tokens` are relayed to `https://api.anthropic.com/v1`, including system instructions, conversation turns, tools, images, and streaming events. The proxy substitutes the provider key, relays HTTP errors, and cancels upstream work when the client disconnects. `ck proxy remove claude` restores the prior setting; `ck proxy stop` stops the server. The native Claude route and the Codex-to-Anthropic translation route have separate provider settings and can share the local server.
 
 ### Hermes provider proxy preview
 

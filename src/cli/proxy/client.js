@@ -55,7 +55,7 @@ function route(args) {
   const apiKeyEnv = option(args, '--api-key-env', profile?.upstreamBaseUrl === upstream ? profile.apiKeyEnv : undefined)
   const keyless = args.includes('--keyless') || (apiKeyEnv === null && profile?.upstreamBaseUrl === upstream)
   if (apiKeyEnv && !process.env[apiKeyEnv]) throw new Error(`Set ${apiKeyEnv} in the environment before starting the proxy`)
-  return { upstream, apiKeyEnv, keyless, model: profile?.upstreamBaseUrl === upstream ? profile.model : null }
+  return { upstream, apiKeyEnv, keyless, model: profile?.upstreamBaseUrl === upstream ? profile.model : null, responsesProtocol: profile?.upstreamBaseUrl === upstream && profile.provider === 'anthropic' ? 'anthropic' : 'responses' }
 }
 
 function routes(args) {
@@ -90,13 +90,14 @@ async function configureInteractively() {
   const provider = await clack.select({ message: 'Provider for Codex Responses requests', options: [
     { value: 'openai', label: 'OpenAI API', hint: 'native Responses API' },
     { value: 'custom-responses', label: 'Custom Responses-compatible endpoint', hint: 'must support POST /v1/responses' },
+    { value: 'anthropic', label: 'Anthropic API', hint: 'translate supported Codex Responses requests to Messages' },
   ] })
   if (clack.isCancel(provider)) { clack.cancel('Proxy setup stopped'); return null }
-  const upstreamBaseUrl = provider === 'openai' ? 'https://api.openai.com/v1' : await clack.text({ message: 'Provider API base URL ending in /v1', validate: (value) => { try { validateUpstream(value); return } catch (error) { return error.message } } })
+  const upstreamBaseUrl = provider === 'openai' ? 'https://api.openai.com/v1' : provider === 'anthropic' ? 'https://api.anthropic.com/v1' : await clack.text({ message: 'Provider API base URL ending in /v1', validate: (value) => { try { validateUpstream(value); return } catch (error) { return error.message } } })
   if (clack.isCancel(upstreamBaseUrl)) { clack.cancel('Proxy setup stopped'); return null }
   const model = await clack.text({ message: 'Model ID to select in Codex', validate: (value) => value?.trim() ? undefined : 'Enter a model ID' })
   if (clack.isCancel(model)) { clack.cancel('Proxy setup stopped'); return null }
-  const apiKeyEnv = await clack.text({ message: 'Environment variable containing the provider API key (blank for a keyless local endpoint)', initialValue: provider === 'openai' ? 'OPENAI_API_KEY' : '', validate: (value) => !value || /^[A-Za-z_][A-Za-z0-9_]*$/.test(value) ? undefined : 'Enter an environment variable name' })
+  const apiKeyEnv = await clack.text({ message: 'Environment variable containing the provider API key (blank for a keyless local endpoint)', initialValue: provider === 'openai' ? 'OPENAI_API_KEY' : provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : '', validate: (value) => (provider !== 'anthropic' || value) && (!value || /^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) ? undefined : 'Enter an environment variable name' })
   if (clack.isCancel(apiKeyEnv)) { clack.cancel('Proxy setup stopped'); return null }
   if (apiKeyEnv.trim() && !process.env[apiKeyEnv.trim()]) throw new Error(`Set ${apiKeyEnv.trim()} in this terminal before running proxy setup`)
   return saveProfile({ provider, upstreamBaseUrl, model, apiKeyEnv: apiKeyEnv.trim() || null })
@@ -177,8 +178,8 @@ export async function runProxyCommand(args) {
     const analyzeCodexRequest = responses && analysis.mode !== 'off' ? createCodexAnalysis({ ...analysisOptions, onDecision: auditDecision('codex') }) : undefined
     const analyzeClaudeMessagesRequest = anthropic && analysis.mode !== 'off' ? createClaudeMessagesAnalysis({ ...analysisOptions, onDecision: auditDecision('claude') }) : undefined
     const analyzeHermesRequest = hermes && analysis.mode !== 'off' ? createHermesAnalysis({ ...analysisOptions, onDecision: auditDecision('hermes') }) : undefined
-    const server = createProxyServer({ port, upstreamBaseUrl: responses?.upstream, apiKey: responses?.apiKeyEnv ? process.env[responses.apiKeyEnv] : responses?.keyless ? '' : undefined, anthropicUpstreamBaseUrl: anthropic?.upstreamBaseUrl, anthropicApiKey: anthropic ? process.env[anthropic.apiKeyEnv] : undefined, hermesUpstreamBaseUrl: hermes?.upstreamBaseUrl, hermesApiKey: hermes?.apiKeyEnv ? process.env[hermes.apiKeyEnv] : '', analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest })
-    writeState({ pid: process.pid, port: server.port, startedAt: new Date().toISOString(), version: installedVersion().version, upstreamBaseUrl: responses?.upstream || null, apiKeyEnv: responses?.apiKeyEnv || null, anthropicUpstreamBaseUrl: anthropic?.upstreamBaseUrl || null, anthropicApiKeyEnv: anthropic?.apiKeyEnv || null, hermesUpstreamBaseUrl: hermes?.upstreamBaseUrl || null, hermesApiKeyEnv: hermes?.apiKeyEnv || null })
+    const server = createProxyServer({ port, upstreamBaseUrl: responses?.upstream, apiKey: responses?.apiKeyEnv ? process.env[responses.apiKeyEnv] : responses?.keyless ? '' : undefined, responsesProtocol: responses?.responsesProtocol, anthropicUpstreamBaseUrl: anthropic?.upstreamBaseUrl, anthropicApiKey: anthropic ? process.env[anthropic.apiKeyEnv] : undefined, hermesUpstreamBaseUrl: hermes?.upstreamBaseUrl, hermesApiKey: hermes?.apiKeyEnv ? process.env[hermes.apiKeyEnv] : '', analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest })
+    writeState({ pid: process.pid, port: server.port, startedAt: new Date().toISOString(), version: installedVersion().version, upstreamBaseUrl: responses?.upstream || null, responsesProtocol: responses?.responsesProtocol || null, apiKeyEnv: responses?.apiKeyEnv || null, anthropicUpstreamBaseUrl: anthropic?.upstreamBaseUrl || null, anthropicApiKeyEnv: anthropic?.apiKeyEnv || null, hermesUpstreamBaseUrl: hermes?.upstreamBaseUrl || null, hermesApiKeyEnv: hermes?.apiKeyEnv || null })
     console.log(`CheatingKit proxy listening on http://127.0.0.1:${server.port}/v1`)
     const close = () => { server.stop(true); if (readState()?.pid === process.pid) rmSync(statePath(), { force: true }); process.exit(0) }
     process.on('SIGTERM', close)
@@ -199,7 +200,7 @@ export async function runProxyCommand(args) {
     const state = readState()
     const live = state && await health(state.port)
     if (state && live?.pid === state.pid) {
-      if (state.port !== port || state.upstreamBaseUrl !== upstream || (state.apiKeyEnv || null) !== (apiKeyEnv || null) || (state.anthropicUpstreamBaseUrl || null) !== (anthropic?.upstreamBaseUrl || null) || (state.anthropicApiKeyEnv || null) !== (anthropic?.apiKeyEnv || null) || (state.hermesUpstreamBaseUrl || null) !== (hermes?.upstreamBaseUrl || null) || (state.hermesApiKeyEnv || null) !== (hermes?.apiKeyEnv || null)) throw new Error('Proxy is already running with different port or provider; stop it before changing the route')
+      if (state.port !== port || state.upstreamBaseUrl !== upstream || (state.responsesProtocol || 'responses') !== (responses?.responsesProtocol || 'responses') || (state.apiKeyEnv || null) !== (apiKeyEnv || null) || (state.anthropicUpstreamBaseUrl || null) !== (anthropic?.upstreamBaseUrl || null) || (state.anthropicApiKeyEnv || null) !== (anthropic?.apiKeyEnv || null) || (state.hermesUpstreamBaseUrl || null) !== (hermes?.upstreamBaseUrl || null) || (state.hermesApiKeyEnv || null) !== (hermes?.apiKeyEnv || null)) throw new Error('Proxy is already running with different port or provider; stop it before changing the route')
       if (!args.includes('--quiet')) console.log(JSON.stringify({ running: true, reused: true, ...state })); return
     }
     if (await health(port)) throw new Error(`A CheatingKit proxy is already listening on port ${port} without matching state`)
@@ -239,9 +240,9 @@ export async function runProxyCommand(args) {
     if (args[1] === 'claude' && !anthropic) throw new Error('Run ck proxy setup claude before installing the Claude Code route')
     if (args[1] === 'hermes' && !hermes) throw new Error('Run ck proxy setup hermes before installing the Hermes route')
     const current = readState()
-    if (current && ((current.upstreamBaseUrl || null) !== (responses?.upstream || null) || (current.anthropicUpstreamBaseUrl || null) !== (anthropic?.upstreamBaseUrl || null) || (current.anthropicApiKeyEnv || null) !== (anthropic?.apiKeyEnv || null) || (current.hermesUpstreamBaseUrl || null) !== (hermes?.upstreamBaseUrl || null) || (current.hermesApiKeyEnv || null) !== (hermes?.apiKeyEnv || null))) await runProxyCommand(['stop'])
+    if (current && ((current.upstreamBaseUrl || null) !== (responses?.upstream || null) || (current.responsesProtocol || 'responses') !== (responses?.responsesProtocol || 'responses') || (current.anthropicUpstreamBaseUrl || null) !== (anthropic?.upstreamBaseUrl || null) || (current.anthropicApiKeyEnv || null) !== (anthropic?.apiKeyEnv || null) || (current.hermesUpstreamBaseUrl || null) !== (hermes?.upstreamBaseUrl || null) || (current.hermesApiKeyEnv || null) !== (hermes?.apiKeyEnv || null))) await runProxyCommand(['stop'])
     await runProxyCommand(['start', '--port', String(port), ...(responses ? ['--upstream', responses.upstream] : [])])
-    console.log(JSON.stringify(args[1] === 'claude' ? installClaudeRoute(`http://127.0.0.1:${port}`) : args[1] === 'hermes' ? installHermesRoute(`http://127.0.0.1:${port}/v1`, hermes.model) : installCodexRoute(`http://127.0.0.1:${port}/v1`, responses.model)))
+    console.log(JSON.stringify(args[1] === 'claude' ? installClaudeRoute(`http://127.0.0.1:${port}`) : args[1] === 'hermes' ? installHermesRoute(`http://127.0.0.1:${port}/v1`, hermes.model) : installCodexRoute(`http://127.0.0.1:${port}/v1`, responses.model, { disableWebSearch: responses.responsesProtocol === 'anthropic' })))
     return
   }
   if (action === 'remove') {

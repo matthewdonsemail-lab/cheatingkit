@@ -37,7 +37,7 @@ function restoreRootSetting(lines, name, expected, previous) {
   lines.splice(at, 1, ...(previous === null ? [] : [previous]))
 }
 
-export function addCodexRoute(content, baseUrl, model = null) {
+export function addCodexRoute(content, baseUrl, model = null, { disableWebSearch = false } = {}) {
   if (content.includes(marker) || /^\s*\[model_providers\.cheatingkit\]\s*$/m.test(content)) throw new Error('CheatingKit route already appears in Codex config')
   const eol = content.includes('\r\n') ? '\r\n' : '\n'
   const bom = content.startsWith('\uFEFF') ? '\uFEFF' : ''
@@ -46,9 +46,11 @@ export function addCodexRoute(content, baseUrl, model = null) {
   const previousProviderLine = updateRootSetting(lines, 'model_provider', providerLine)
   const modelLine = model === null ? null : `model = "${model}"`
   const previousModelLine = modelLine === null ? null : updateRootSetting(lines, 'model', modelLine)
+  const webSearchLine = disableWebSearch ? 'web_search = "disabled"' : null
+  const previousWebSearchLine = webSearchLine === null ? null : updateRootSetting(lines, 'web_search', webSearchLine)
   const prefix = bom + lines.join(eol)
   const block = `${prefix && !prefix.endsWith(eol) ? eol : ''}${marker}${eol}[model_providers.cheatingkit]${eol}name = "CheatingKit local proxy"${eol}base_url = "${baseUrl}"${eol}wire_api = "responses"${eol}requires_openai_auth = false${eol}supports_websockets = false${eol}request_max_retries = 0${eol}stream_max_retries = 0${eol}# End CheatingKit local provider proxy${eol}`
-  return { content: prefix + block, providerLine, previousProviderLine, modelLine, previousModelLine, block }
+  return { content: prefix + block, providerLine, previousProviderLine, modelLine, previousModelLine, webSearchLine, previousWebSearchLine, block }
 }
 
 export function removeCodexRoute(content, state) {
@@ -60,6 +62,7 @@ export function removeCodexRoute(content, state) {
     const at = lines.findIndex((line, index) => index < rootEnd(lines) && line.trim() === marker)
     if (at < 0 || lines[at + 1] !== state.line) throw new Error('Codex proxy setting was edited; inspect it before restoring')
     if (state.modelLine) restoreRootSetting(lines, 'model', state.modelLine, state.previousModelLine)
+    if (state.webSearchLine) restoreRootSetting(lines, 'web_search', state.webSearchLine, state.previousWebSearchLine)
     const markerAt = lines.indexOf(marker)
     lines.splice(markerAt, 2, ...(state.previousLine === null ? [] : [state.previousLine]))
     return bom + lines.join(eol)
@@ -71,15 +74,16 @@ export function removeCodexRoute(content, state) {
   const lines = withoutBlock.slice(bom.length).split(/\r?\n/)
   restoreRootSetting(lines, 'model_provider', state.providerLine, state.previousProviderLine)
   if (state.modelLine) restoreRootSetting(lines, 'model', state.modelLine, state.previousModelLine)
+  if (state.webSearchLine) restoreRootSetting(lines, 'web_search', state.webSearchLine, state.previousWebSearchLine)
   return bom + lines.join(eol)
 }
 
-export function installCodexRoute(baseUrl, model = null) {
+export function installCodexRoute(baseUrl, model = null, options = {}) {
   if (existsSync(statePath())) throw new Error('Codex proxy route is already installed; remove it before changing the upstream')
   const path = codexPath()
   const existed = existsSync(path)
   const original = existed ? readFileSync(path, 'utf8') : ''
-  const patch = addCodexRoute(original, baseUrl, model)
+  const patch = addCodexRoute(original, baseUrl, model, options)
   writeAtomic(statePath(), JSON.stringify({ path, existed, ...patch, content: undefined }) + '\n')
   try { writeAtomic(path, patch.content) }
   catch (error) { rmSync(statePath(), { force: true }); throw error }
