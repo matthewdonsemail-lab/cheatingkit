@@ -32,9 +32,9 @@ export async function audit({ db, replId, directory, round, goal, records, attem
       `  let parsed`,
       `  try { parsed = JSON.parse(got.body) } catch { continue }`,
       `  candidates.push({ dir, status: parsed.status, text: parsed.proposedText })`,
-      `  if (parsed.status === 'proposed' && typeof parsed.proposedText === 'string' && parsed.proposedText.trim()) { clean.push(${JSON.stringify(records[0]?.id || null)}); evidence.push(dir + '/rewrite.json') }`,
+      `  if ((parsed.status === 'proposed' && typeof parsed.proposedText === 'string' && parsed.proposedText.trim()) || parsed.status === 'unchanged') { clean.push(${JSON.stringify(records[0]?.id || null)}); evidence.push(dir + '/rewrite.json') }`,
       `}`,
-      `({ clean: [...new Set(clean.filter(Boolean))], evidence, candidates, winner: candidates.find((c) => c.status === 'proposed') || null })`,
+      `({ clean: [...new Set(clean.filter(Boolean))], evidence, candidates, winner: candidates.find((c) => c.status === 'proposed') || candidates.find((c) => c.status === 'unchanged') || null })`,
     ].join('\n')
     kernel.write({ type: 'execute', id: cellId, code, capability: capabilityFrame(db.prepare('SELECT * FROM replCapabilities WHERE token=?').get(token)) })
     const done = await new Promise((resolve, reject) => {
