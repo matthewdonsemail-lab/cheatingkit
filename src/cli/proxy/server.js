@@ -1,3 +1,4 @@
+import { createMessageGate } from './gate.js'
 import { anthropicPath, relayAnthropicRequest } from './anthropic.js'
 import { relayChatCompletions } from './chatCompletions.js'
 import { relayCodexAnthropic } from './codexAnthropic.js'
@@ -20,7 +21,8 @@ export function validateUpstream(raw) {
   return url
 }
 
-export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, responsesProtocol = 'responses', anthropicUpstreamBaseUrl, anthropicApiKey, hermesUpstreamBaseUrl, hermesApiKey, fetchUpstream = fetch, analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest, attemptStore } = {}) {
+export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, responsesProtocol = 'responses', anthropicUpstreamBaseUrl, anthropicApiKey, hermesUpstreamBaseUrl, hermesApiKey, fetchUpstream = fetch, analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest, attemptStore, gate = createMessageGate(), credentialMode = 'native' } = {}) {
+  if (!['native', 'provider'].includes(credentialMode)) throw new Error('Credential mode must be native or provider')
   if (!upstreamBaseUrl && !anthropicUpstreamBaseUrl && !hermesUpstreamBaseUrl) throw new Error('Configure at least one proxy upstream')
   const upstream = upstreamBaseUrl ? validateUpstream(upstreamBaseUrl) : null
   const anthropicUpstream = anthropicUpstreamBaseUrl ? validateUpstream(anthropicUpstreamBaseUrl) : null
@@ -33,14 +35,12 @@ export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, respon
     async fetch(request) {
       const path = new URL(request.url).pathname
       if (path === '/health' && request.method === 'GET') return Response.json({ service: 'cheatingkit-proxy', pid: process.pid, port: server.port })
-      const relayTracked = (harness, protocol, provider, analyze, relay) => attemptStore
-        ? trackProxyRequest(request, { store: attemptStore, harness, protocol, provider, analyze, relay })
-        : relay(analyze)
+      const relayTracked = (harness, protocol, provider, analyze, relay) => trackProxyRequest(request, { store: attemptStore, harness, protocol, provider, analyze, relay, gate })
       if (anthropicUpstream && anthropicPath(path)) {
-        const relay = (analyze) => relayAnthropicRequest(request, { upstreamBaseUrl: anthropicUpstream.href, apiKey: anthropicApiKey, fetchUpstream, analyzeMessagesRequest: analyze })
+        const relay = (analyze) => relayAnthropicRequest(request, { upstreamBaseUrl: anthropicUpstream.href, apiKey: credentialMode === 'provider' ? anthropicApiKey : undefined, fetchUpstream, analyzeMessagesRequest: analyze })
         return path === '/v1/messages' && request.method === 'POST' ? relayTracked('claude', 'messages', 'anthropic', analyzeClaudeMessagesRequest, relay) : relay(analyzeClaudeMessagesRequest)
       }
-      if (hermesUpstream && path === '/v1/chat/completions' && request.method === 'POST') return relayTracked('hermes', 'chat-completions', 'chat-completions', analyzeHermesRequest, (analyze) => relayChatCompletions(request, { upstreamBaseUrl: hermesUpstream.href, apiKey: hermesApiKey, fetchUpstream, analyzeHermesRequest: analyze }))
+      if (hermesUpstream && path === '/v1/chat/completions' && request.method === 'POST') return relayTracked('hermes', 'chat-completions', 'chat-completions', analyzeHermesRequest, (analyze) => relayChatCompletions(request, { upstreamBaseUrl: hermesUpstream.href, apiKey: credentialMode === 'provider' ? hermesApiKey : undefined, fetchUpstream, analyzeHermesRequest: analyze }))
       if (!upstream || path !== '/v1/responses' || request.method !== 'POST') return new Response('Not found', { status: 404 })
       if (responsesProtocol === 'anthropic') return relayTracked('codex', 'responses', 'anthropic', analyzeCodexRequest, (analyze) => relayCodexAnthropic(request, { upstreamBaseUrl: upstream.href, apiKey, fetchUpstream, analyzeCodexRequest: analyze }))
       if (responsesProtocol === 'chat-completions') return relayTracked('codex', 'responses', 'chat-completions', analyzeCodexRequest, (analyze) => relayCodexChat(request, { upstreamBaseUrl: upstream.href, apiKey, fetchUpstream, analyzeCodexRequest: analyze }))
@@ -48,7 +48,7 @@ export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, respon
       const target = new URL('responses', `${upstream.href}/`)
       return relayTracked('codex', 'responses', 'responses', analyzeCodexRequest, async (analyze) => { try {
         const headers = relayHeaders(request.headers)
-        if (apiKey !== undefined) {
+        if (credentialMode === 'provider' && apiKey !== undefined) {
           headers.delete('authorization')
           if (apiKey) headers.set('authorization', `Bearer ${apiKey}`)
         }

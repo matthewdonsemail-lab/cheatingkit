@@ -37,7 +37,7 @@ function restoreRootSetting(lines, name, expected, previous) {
   lines.splice(at, 1, ...(previous === null ? [] : [previous]))
 }
 
-export function addCodexRoute(content, baseUrl, model = null, { disableWebSearch = false } = {}) {
+export function addCodexRoute(content, baseUrl, model = null, { disableWebSearch = false, nativeCredentials = false } = {}) {
   if (content.includes(marker) || /^\s*\[model_providers\.cheatingkit\]\s*$/m.test(content)) throw new Error('CheatingKit route already appears in Codex config')
   const eol = content.includes('\r\n') ? '\r\n' : '\n'
   const bom = content.startsWith('\uFEFF') ? '\uFEFF' : ''
@@ -49,7 +49,7 @@ export function addCodexRoute(content, baseUrl, model = null, { disableWebSearch
   const webSearchLine = disableWebSearch ? 'web_search = "disabled"' : null
   const previousWebSearchLine = webSearchLine === null ? null : updateRootSetting(lines, 'web_search', webSearchLine)
   const prefix = bom + lines.join(eol)
-  const block = `${prefix && !prefix.endsWith(eol) ? eol : ''}${marker}${eol}[model_providers.cheatingkit]${eol}name = "CheatingKit local proxy"${eol}base_url = "${baseUrl}"${eol}wire_api = "responses"${eol}requires_openai_auth = false${eol}supports_websockets = false${eol}request_max_retries = 0${eol}stream_max_retries = 0${eol}# End CheatingKit local provider proxy${eol}`
+  const block = `${prefix && !prefix.endsWith(eol) ? eol : ''}${marker}${eol}[model_providers.cheatingkit]${eol}name = "CheatingKit local proxy"${eol}base_url = "${baseUrl}"${eol}wire_api = "responses"${eol}requires_openai_auth = ${nativeCredentials}${eol}supports_websockets = false${eol}request_max_retries = 0${eol}stream_max_retries = 0${eol}# End CheatingKit local provider proxy${eol}`
   return { content: prefix + block, providerLine, previousProviderLine, modelLine, previousModelLine, webSearchLine, previousWebSearchLine, block }
 }
 

@@ -37,6 +37,10 @@ ck proxy start --gate-mode enforce
 
 `CHEATINGKIT_GATE_MODE=off|observe|enforce` selects the mode for a launched proxy. Stop a running proxy before changing modes; `ck proxy status` reports the active mode. `ck proxy attempts [request ID]` shows the gate decision beside the observed outcome.
 
+Without a configured analysis model, `observe` records an evaluator error and forwards the original request; `enforce` blocks. Unsupported requests without eligible plain user text also fail closed in enforce mode. Set `CHEATINGKIT_GATE_MODE` in the environment used by your launcher to retain the selected mode after a restart.
+
+Native credentials are preserved even when a task-provider key is configured. To intentionally substitute the configured destination provider's credentials, use `--credential-mode provider` on start/install or set `CHEATINGKIT_CREDENTIAL_MODE=provider`. Reinstall an existing Codex route to update its authentication setting. Protocol translation uses the selected destination provider's credentials.
+
 ## Limits
 
 The gate checks a task against locally defined scope and authorization criteria. It does not predict or optimize for a provider's decision, and it does not decide whether an activity is safe in a general sense. Local observations describe what happened in earlier sessions; they are not a guarantee about a new request.

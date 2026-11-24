@@ -40,7 +40,7 @@ function eventText(value, protocol) {
   if (!value || typeof value !== 'object') return { text: '', refusal: false, error: null }
   if (protocol === 'responses') {
     const text = value.type === 'response.output_text.delta' || value.type === 'response.refusal.delta' ? value.delta : value.output_text
-    return { text: typeof text === 'string' ? text : '', refusal: value.type === 'response.refusal.delta', error: value.type === 'response.failed' ? 'provider response failed' : null }
+    return { text: typeof text === 'string' ? text : '', refusal: value.type === 'response.refusal.delta', error: value.type === 'response.failed' ? [value.response?.error?.code || value.error?.code, value.response?.error?.message || value.error?.message || 'provider response failed'].filter(Boolean).join(': ') : null }
   }
   if (protocol === 'messages') {
     const text = value.delta?.type === 'text_delta' ? value.delta.text : ''
@@ -65,7 +65,7 @@ export function openAttemptStore(db = openDatabase()) {
   const withTimeline = (row) => {
     const parsed = parseAttempt(row)
     if (!parsed) return null
-    return { ...parsed, timelineEvents: parsed.sessionId && parsed.sourceId ? timeline.all(parsed.harness, parsed.sessionId, parsed.sourceId) : [] }
+    return { ...parsed, gateDecision: JSON.parse(db.prepare('SELECT record FROM proxyGateDecisions WHERE requestId=?').get(parsed.requestId)?.record || 'null'), timelineEvents: parsed.sessionId && parsed.sourceId ? timeline.all(parsed.harness, parsed.sessionId, parsed.sourceId) : [] }
   }
   return {
     begin({ harness, protocol, provider = null, model = null, sessionId = null, sourceId = null, originalText = null }) {
@@ -75,6 +75,9 @@ export function openAttemptStore(db = openDatabase()) {
     },
     decision(requestId, value = {}) {
       decisionUpdate.run(value.originalText ?? null, value.proposedText ?? null, JSON.stringify(value.sourceIds || []), value.mode || null, value.reason || null, value.applied ? 1 : 0, requestId)
+    },
+    gateDecision(requestId, record) {
+      db.prepare('INSERT OR REPLACE INTO proxyGateDecisions(requestId,recordedAt,record) VALUES(?,?,?)').run(requestId, new Date().toISOString(), JSON.stringify(record))
     },
     finish(requestId, { httpStatus = null, responseCompleted = false, responseExcerpt = '', observation = null, error = null } = {}) {
       complete.run(new Date().toISOString(), httpStatus, responseCompleted ? 1 : 0, responseExcerpt.slice(0, maxExcerpt), observation, error?.slice(0, 500) || null, requestId)
@@ -113,7 +116,8 @@ export function observeResponse(response, { store, requestId, protocol }) {
   const record = (completed, error = null) => {
     if (finished) return
     finished = true
-    const observation = error ? 'stream_error' : status >= 400 ? 'http_error' : explicitRefusal ? 'observed_refusal' : warningPattern.test(excerpt) && refusalPattern.test(excerpt) ? 'potential_cyber_warning' : refusalPattern.test(excerpt) ? 'potential_refusal' : 'completed'
+    const providerWarning = streamError && /cyber|malware|phishing|credential[_ -]theft/i.test(streamError)
+    const observation = providerWarning ? 'potential_cyber_warning' : error ? (error === streamError ? 'provider_error' : 'stream_error') : status >= 400 ? 'http_error' : explicitRefusal ? 'observed_refusal' : warningPattern.test(excerpt) && refusalPattern.test(excerpt) ? 'potential_cyber_warning' : refusalPattern.test(excerpt) ? 'potential_refusal' : 'completed'
     try { store.finish(requestId, { httpStatus: status, responseCompleted: completed, responseExcerpt: excerpt, observation, error: error || streamError }) } catch { /* audit failure must not change provider response */ }
   }
   const parseSseLine = (line) => {
@@ -179,21 +183,62 @@ function explicitId(request, name) {
   return value && /^[A-Za-z0-9_./:@-]{1,200}$/.test(value) ? value : null
 }
 
-// Keeps request and response ownership in the protocol relay. Recording failures
-// never alter the provider exchange; the request ID is local to the corpus DB.
-export async function trackProxyRequest(request, { store, harness, protocol, provider, analyze, relay }) {
+// Keeps request and response ownership in the protocol relay. Enforcement
+// fails closed when the gate audit cannot be saved; IDs stay local to the DB.
+export async function trackProxyRequest(request, { store, harness, protocol, provider, analyze, relay, gate }) {
   let requestId
+  let auditError = null
   try {
     const details = requestDetails(await requestPreview(request), protocol)
     requestId = store.begin({ harness, protocol, provider, ...details, sessionId: explicitId(request, 'x-cheatingkit-session-id'), sourceId: explicitId(request, 'x-cheatingkit-source-id') })
     if (!analyze) store.decision(requestId, { mode: 'off', reason: 'disabled' })
-  } catch { return relay(analyze) }
+  } catch (error) {
+    auditError = error
+    if (!gate) return relay(analyze)
+  }
   const wrappedAnalysis = analyze && (async (rawBody, context) => {
     const result = await analyze(rawBody, context)
     try { store.decision(requestId, result.decision) } catch { /* recording cannot break forwarding */ }
     return result
   })
   try {
+    if (gate) {
+      const rawBody = await request.clone().text()
+      let analysis
+      let result
+      try {
+        analysis = analyze ? await analyze(rawBody, { signal: request.signal }) : null
+        result = await gate(rawBody, { protocol, proposedText: analysis?.decision?.proposedText, signal: request.signal })
+      } catch (error) {
+        result = { body: rawBody, record: { originalRequest: rawBody, mode: gate.mode || 'enforce', decision: 'block', terminationReason: `evaluator_error: ${error.message}`, evaluations: [], revisions: [], sourceIds: [] } }
+      }
+      if (store && auditError && result.record.mode === 'enforce') {
+        result.record.decision = 'block'; result.record.terminationReason = 'attempt audit unavailable'
+      }
+      try { if (requestId) store.gateDecision(requestId, result.record) }
+      catch {
+        if (result.record.mode === 'enforce') { result.record.decision = 'block'; result.record.terminationReason = 'gate audit failed' }
+      }
+      if (requestId) {
+        try {
+          store.decision(requestId, {
+            ...analysis?.decision,
+            mode: analysis?.decision?.mode || 'off',
+            reason: analysis?.decision?.reason || 'disabled',
+            originalText: result.record.originalText ?? analysis?.decision?.originalText,
+            proposedText: result.record.mode === 'off' ? analysis?.decision?.proposedText : result.record.proposedText,
+            sourceIds: result.record.mode === 'off' ? analysis?.decision?.sourceIds : result.record.sourceIds,
+            applied: result.record.mode === 'off' ? analysis?.decision?.applied : result.record.mode === 'enforce' && result.record.decision === 'allow' && result.body !== rawBody,
+          })
+        } catch { /* the gate audit remains authoritative */ }
+      }
+      if (result.record.mode === 'enforce' && result.record.decision !== 'allow') {
+        if (requestId) { try { store.finish(requestId, { observation: 'gate_' + result.record.decision, error: result.record.terminationReason }) } catch {} }
+        return Response.json({ error: { type: 'cheatingkit_gate', decision: result.record.decision, message: result.record.terminationReason }, requestId }, { status: result.record.decision === 'needs_clarification' ? 422 : 403, headers: requestId ? { 'x-cheatingkit-request-id': requestId } : {} })
+      }
+      const response = await relay(async () => ({ body: result.record.mode === 'off' ? analysis?.body || rawBody : result.body, decision: analysis?.decision }))
+      return requestId ? observeResponse(response, { store, requestId, protocol }) : response
+    }
     const response = await relay(wrappedAnalysis)
     return observeResponse(response, { store, requestId, protocol })
   } catch (error) {

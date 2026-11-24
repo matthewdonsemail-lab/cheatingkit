@@ -1,3 +1,4 @@
+import { createMessageGate } from './gate.js'
 import { expect, test } from 'bun:test'
 import { createCodexAnalysis } from './analysis.js'
 import { validateAnalysisProfile } from './analysisProfile.js'
@@ -68,7 +69,7 @@ test('apply mode changes only the latest plain user text and relays task provide
   } })
   const analyze = createCodexAnalysis({ mode: 'apply', model: 'analysis-model', upstreamBaseUrl: 'https://analysis.example/v1',
     contextForPrompt: async () => 'source evidence', fetchAnalysis: async () => Response.json(proposal) })
-  const proxy = createProxyServer({ port: 0, upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: 'task-secret', analyzeCodexRequest: analyze })
+  const proxy = createProxyServer({ credentialMode: 'provider', gate: createMessageGate({ mode: 'off' }), port: 0, upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: 'task-secret', analyzeCodexRequest: analyze })
   try {
     const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, { method: 'POST', headers: { authorization: 'Bearer harness-secret' }, body: raw })
     expect(await response.text()).toContain('response.completed')
@@ -104,7 +105,7 @@ test('client cancellation aborts analysis and does not call task provider', asyn
   const analyze = createCodexAnalysis({ mode: 'apply', model: 'analysis-model', upstreamBaseUrl: 'https://analysis.example/v1', contextForPrompt: async () => '',
     fetchAnalysis: async (_url: URL, init: RequestInit) => { analysisSignal = init.signal as AbortSignal; return new Promise((_resolve, reject) => analysisSignal!.addEventListener('abort', () => reject(new Error('aborted')), { once: true })) },
   })
-  const proxy = createProxyServer({ port: 0, upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, analyzeCodexRequest: analyze })
+  const proxy = createProxyServer({ credentialMode: 'provider', gate: createMessageGate({ mode: 'off' }), port: 0, upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, analyzeCodexRequest: analyze })
   try {
     const controller = new AbortController()
     const pending = fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, { method: 'POST', body: raw, signal: controller.signal })

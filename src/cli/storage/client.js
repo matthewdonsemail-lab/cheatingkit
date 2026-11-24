@@ -78,6 +78,11 @@ export function openDatabase(path = databasePath()) {
       observation TEXT,
       error TEXT
     );
+    CREATE TABLE IF NOT EXISTS proxyGateDecisions (
+      requestId TEXT PRIMARY KEY REFERENCES proxyAttempts(requestId),
+      recordedAt TEXT NOT NULL,
+      record TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS sourceCursors (
       sourcePath TEXT PRIMARY KEY,
       harness TEXT NOT NULL,

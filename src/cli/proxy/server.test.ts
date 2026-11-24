@@ -1,3 +1,4 @@
+import { createMessageGate } from './gate.js'
 import { test, expect } from 'bun:test'
 import { createProxyServer, validateUpstream } from './server.js'
 import { createHermesAnalysis } from './hermesAnalysis.js'
@@ -35,7 +36,7 @@ test('Hermes request is analyzed, forwarded with task fields intact, and streame
     return new Response('data: {"choices":[{"delta":{"content":"Done"}}]}\n\ndata: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } })
   } })
   const analyzeHermesRequest = createHermesAnalysis({ mode: 'apply', model: 'analysis-model', upstreamBaseUrl: `http://127.0.0.1:${analysis.port}/v1`, proxyPort: 0, contextForPrompt: async () => 'Corpus evidence' })
-  const proxy = createProxyServer({ port: 0, hermesUpstreamBaseUrl: `http://127.0.0.1:${task.port}/v1`, analyzeHermesRequest })
+  const proxy = createProxyServer({ port: 0, hermesUpstreamBaseUrl: `http://127.0.0.1:${task.port}/v1`, analyzeHermesRequest, gate: createMessageGate({ mode: 'enforce', contextForPrompt: async () => '', evaluate: async (stage) => stage === 'scope' ? { decision: 'allow', reason: 'in scope' } : { faithful: true, reason: 'preserved' } }) })
   try {
     const body = { model: 'task-model', messages: [{ role: 'user', content: 'Prior task' }, { role: 'assistant', content: 'Prior response' }, { role: 'user', content: 'Explain result' }], tools: [{ type: 'function', function: { name: 'work' } }], stream: true }
     const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
@@ -92,7 +93,7 @@ test('requires a concrete upstream API base URL', () => {
   expect(() => createProxyServer({ port: 4178, upstreamBaseUrl: 'http://127.0.0.1:4178/v1' })).toThrow()
 })
 
-test('provider key replaces the harness credential without changing the request body', async () => {
+test('native credential is preserved even with a configured provider key', async () => {
   let received: { authorization: string | null, body: string } | null = null
   const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
     received = { authorization: request.headers.get('authorization'), body: await request.text() }
@@ -102,7 +103,7 @@ test('provider key replaces the harness credential without changing the request 
   try {
     const body = '{"model":"picked-model","tools":[{"type":"function","name":"read"}]}'
     await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, { method: 'POST', headers: { authorization: 'Bearer codex-key' }, body })
-    expect(received).toEqual({ authorization: 'Bearer provider-key', body })
+    expect(received).toEqual({ authorization: 'Bearer codex-key', body })
   } finally { proxy.stop(true); upstream.stop(true) }
 })
 

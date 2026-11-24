@@ -11,7 +11,7 @@ test('starts one detached proxy, reports health, and stops it', async () => {
   const entry = join(import.meta.dir, '..', 'index.ts')
   const codexConfig = join(home, 'codex.toml')
   writeFileSync(codexConfig, 'model = "chosen-model"\n[features]\nweb_search = true\n')
-  const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: codexConfig, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml') }
+  const env = { ...process.env, CHEATINGKIT_CREDENTIAL_MODE: 'provider', CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: codexConfig, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml') }
   const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 30000, windowsHide: true })
   try {
     const started = run('start', '--port', '0', '--upstream', `http://127.0.0.1:${upstream.port}/v1`)
@@ -64,7 +64,7 @@ test('configured provider model and key reach a mock upstream and Codex settings
   const port = 42000 + Math.floor(Math.random() * 20000)
   writeFileSync(config, 'model = "original-model"\n[features]\nweb_search = true\n')
   writeFileSync(join(home, 'proxy-provider.json'), JSON.stringify({ provider: 'custom-responses', upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, model: 'selected-model', apiKeyEnv: 'TEST_PROVIDER_KEY' }))
-  const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml'), TEST_PROVIDER_KEY: 'provider-secret' }
+  const env = { ...process.env, CHEATINGKIT_CREDENTIAL_MODE: 'provider', CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml'), TEST_PROVIDER_KEY: 'provider-secret' }
   const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 30000, windowsHide: true })
   try {
     const installed = run('install', 'codex', '--port', String(port))
@@ -96,7 +96,7 @@ test('Hermes-only install starts Chat Completions relay and restores Hermes sett
   const port = 42000 + Math.floor(Math.random() * 20000)
   writeFileSync(config, 'model:\n  default: original-model\n  provider: nous\nagent:\n  max_turns: 10\n')
   writeFileSync(join(home, 'proxy-hermes-provider.json'), JSON.stringify({ upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, model: 'selected-model', apiKeyEnv: 'HERMES_PROVIDER_KEY' }))
-  const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_HERMES_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml'), HERMES_PROVIDER_KEY: 'provider-secret' }
+  const env = { ...process.env, CHEATINGKIT_CREDENTIAL_MODE: 'provider', CHEATINGKIT_HOME: home, CHEATINGKIT_HERMES_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml'), HERMES_PROVIDER_KEY: 'provider-secret' }
   const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 30000, windowsHide: true })
   try {
     const installed = run('install', 'hermes', '--port', String(port))
@@ -133,7 +133,7 @@ test('Codex Anthropic profile installs translated route and restores hosted sear
   const original = 'model = "original-model"\nweb_search = "cached"\n'
   writeFileSync(config, original)
   writeFileSync(join(home, 'proxy-provider.json'), JSON.stringify({ provider: 'anthropic', upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, model: 'claude-test', apiKeyEnv: 'TEST_ANTHROPIC_KEY' }))
-  const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml'), TEST_ANTHROPIC_KEY: 'mock-key' }
+  const env = { ...process.env, CHEATINGKIT_CREDENTIAL_MODE: 'provider', CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml'), TEST_ANTHROPIC_KEY: 'mock-key' }
   const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 30000, windowsHide: true })
   try {
     expect(run('install', 'codex', '--port', String(port)).status).toBe(0)
@@ -166,7 +166,7 @@ test('Codex Chat profile installs translated route, keeps Hermes destination, an
   writeFileSync(config, original)
   writeFileSync(join(home, 'proxy-provider.json'), JSON.stringify({ provider: 'chat-completions', upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, model: 'chat-task-model', apiKeyEnv: 'TEST_CHAT_KEY' }))
   writeFileSync(join(home, 'proxy-hermes-provider.json'), JSON.stringify({ upstreamBaseUrl: `http://127.0.0.1:${hermesUpstream.port}/v1`, model: 'hermes-model', apiKeyEnv: null }))
-  const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml'), TEST_CHAT_KEY: 'provider-secret' }
+  const env = { ...process.env, CHEATINGKIT_CREDENTIAL_MODE: 'provider', CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml'), TEST_CHAT_KEY: 'provider-secret' }
   const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 30000, windowsHide: true })
   try {
     expect(run('install', 'codex', '--port', String(port)).status).toBe(0)
@@ -206,7 +206,7 @@ test('stored Codex API key survives restart and is removed without appearing in 
   saveDirectKey('analysis', 'analysis-key-sentinel')
   writeFileSync(join(home, 'proxy-provider.json'), JSON.stringify({ provider: 'custom-responses', upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, model: 'selected-model', apiKeyEnv: null, apiKeySource: 'local' }))
   writeFileSync(join(home, 'proxy-analysis.json'), JSON.stringify({ mode: 'suggest', upstreamBaseUrl: 'http://127.0.0.1:49681/v1', model: 'analysis-model', apiKeyEnv: null, apiKeySource: 'local' }))
-  const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml') }
+  const env = { ...process.env, CHEATINGKIT_CREDENTIAL_MODE: 'provider', CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml') }
   const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 30000, windowsHide: true })
   try {
     expect(run('install', 'codex', '--port', String(port)).status).toBe(0)
@@ -259,7 +259,7 @@ test('stored Hermes and Claude keys start separate routes and are removed indepe
   saveDirectKey('claude', 'claude-key-sentinel')
   writeFileSync(join(home, 'proxy-hermes-provider.json'), JSON.stringify({ upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, model: 'hermes-test', apiKeyEnv: null, apiKeySource: 'local' }))
   writeFileSync(join(home, 'proxy-anthropic.json'), JSON.stringify({ upstreamBaseUrl: `http://127.0.0.1:${claudeUpstream.port}/v1`, apiKeyEnv: null, apiKeySource: 'local' }))
-  const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_HERMES_CONFIG: hermesConfig, CHEATINGKIT_CLAUDE_SETTINGS: claudeSettings, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml') }
+  const env = { ...process.env, CHEATINGKIT_CREDENTIAL_MODE: 'provider', CHEATINGKIT_HOME: home, CHEATINGKIT_HERMES_CONFIG: hermesConfig, CHEATINGKIT_CLAUDE_SETTINGS: claudeSettings, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml') }
   const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 30000, windowsHide: true })
   try {
     expect(run('install', 'hermes', '--port', String(port)).status).toBe(0)
