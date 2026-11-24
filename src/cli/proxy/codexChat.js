@@ -270,7 +270,8 @@ export async function relayCodexChat(request, { upstreamBaseUrl, apiKey, fetchUp
   try {
     const original = await request.text()
     const body = analyzeCodexRequest ? (await analyzeCodexRequest(original, { signal: request.signal })).body : original
-    const responsesBody = JSON.parse(body)
+    let responsesBody
+    try { responsesBody = JSON.parse(body) } catch { fail('request body must be valid JSON') }
     const chat = responsesToChat(responsesBody)
     const names = toolNames(responsesBody.tools || []).reverse
     const headers = new Headers({ 'content-type': 'application/json' })

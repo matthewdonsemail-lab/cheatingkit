@@ -95,3 +95,22 @@ test('relay sends analysis result to Chat endpoint and returns Responses JSON', 
     expect((await response.json()).output[0].content[0].text).toBe('Done')
   } finally { upstream.stop(true) }
 })
+
+test('relay converts provider errors and propagates cancellation', async () => {
+  const request = new Request('http://127.0.0.1/v1/responses', { method: 'POST', body: JSON.stringify({ model: 'task-model', input: 'Hi' }) })
+  const failed = await relayCodexChat(request, { upstreamBaseUrl: 'https://example.com/v1', fetchUpstream: async () => Response.json({ error: { message: 'Rate limited', type: 'rate_limit_error' } }, { status: 429, headers: { 'retry-after': '3' } }) })
+  expect(failed.status).toBe(429)
+  expect(failed.headers.get('retry-after')).toBe('3')
+  expect((await failed.json()).error).toMatchObject({ message: 'Rate limited', type: 'rate_limit_error' })
+
+  const controller = new AbortController()
+  let upstreamSignal: AbortSignal | undefined
+  const pending = relayCodexChat(new Request('http://127.0.0.1/v1/responses', { method: 'POST', body: JSON.stringify({ model: 'task-model', input: 'Hi' }), signal: controller.signal }), { upstreamBaseUrl: 'https://example.com/v1', fetchUpstream: (_target, init) => {
+    upstreamSignal = init.signal
+    return new Promise((_resolve, reject) => upstreamSignal!.addEventListener('abort', () => reject(new Error('aborted')), { once: true }))
+  } })
+  for (let attempt = 0; attempt < 50 && !upstreamSignal; attempt++) await Bun.sleep(1)
+  controller.abort()
+  expect((await pending).status).toBe(499)
+  expect(upstreamSignal?.aborted).toBe(true)
+})
