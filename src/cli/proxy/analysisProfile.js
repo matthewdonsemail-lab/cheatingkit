@@ -9,12 +9,14 @@ const path = () => join(root(), 'proxy-analysis.json')
 export function validateAnalysisProfile(value) {
   if (!['off', 'suggest', 'apply'].includes(value?.mode)) throw new Error('Analysis mode must be off, suggest, or apply')
   if (value.mode === 'off') return { mode: 'off' }
+  const protocol = value.protocol || 'responses'
+  if (!['responses', 'chat-completions'].includes(protocol)) throw new Error('Analysis protocol must be Responses or Chat Completions')
   validateUpstream(value.upstreamBaseUrl)
   if (typeof value.model !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:/+@-]*$/.test(value.model)) throw new Error('A valid analysis model ID is required')
   if (value.apiKeyEnv !== null && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value.apiKeyEnv || '')) throw new Error('Analysis key environment variable must be a valid name or null')
   if (value.apiKeySource !== undefined && value.apiKeySource !== 'local') throw new Error('Unknown analysis API key source')
   if (value.apiKeySource === 'local' && value.apiKeyEnv !== null) throw new Error('A stored analysis key cannot also use an environment variable')
-  return { mode: value.mode, upstreamBaseUrl: value.upstreamBaseUrl, model: value.model, apiKeyEnv: value.apiKeyEnv, ...(value.apiKeySource === 'local' ? { apiKeySource: 'local' } : {}) }
+  return { mode: value.mode, protocol, upstreamBaseUrl: value.upstreamBaseUrl, model: value.model, apiKeyEnv: value.apiKeyEnv, ...(value.apiKeySource === 'local' ? { apiKeySource: 'local' } : {}) }
 }
 
 export function loadAnalysisProfile() {

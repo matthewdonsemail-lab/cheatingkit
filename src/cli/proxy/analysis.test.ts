@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { createCodexAnalysis } from './analysis.js'
+import { validateAnalysisProfile } from './analysisProfile.js'
 import { createProxyServer } from './server.js'
 
 const input = { model: 'task-model', input: [
@@ -27,6 +28,36 @@ test('suggest mode sends corpus evidence to separate analysis model and forwards
   expect(seen.body.input).toContain('user: Earlier task')
   expect(seen.body.input).toContain('assistant: Earlier answer')
   expect(seen.body.input).not.toContain('tool data')
+})
+
+test('Chat Completions analysis supports Agnes while preserving the task request', async () => {
+  let seen: any
+  const analyze = createCodexAnalysis({ mode: 'apply', protocol: 'chat-completions', model: 'agnes-3.0-flash', upstreamBaseUrl: 'https://apihub.agnes-ai.com/v1', apiKey: 'analysis-secret',
+    contextForPrompt: async () => 'Source [codex/session#message]: relevant history',
+    fetchAnalysis: async (target: URL, init: RequestInit) => {
+      seen = { target: String(target), auth: new Headers(init.headers).get('authorization'), body: JSON.parse(init.body as string) }
+      return Response.json({ choices: [{ message: { role: 'assistant', content: 'Clearer latest task' } }] })
+    },
+  })
+  const result = await analyze(raw)
+  const expected = structuredClone(input)
+  expected.input[3].content[0].text = 'Clearer latest task'
+  expect(JSON.parse(result.body)).toEqual(expected)
+  expect(result.decision).toMatchObject({ applied: true, sourceIds: ['codex/session#message'] })
+  expect(seen.target).toBe('https://apihub.agnes-ai.com/v1/chat/completions')
+  expect(seen.auth).toBe('Bearer analysis-secret')
+  expect(seen.body.model).toBe('agnes-3.0-flash')
+  expect(seen.body.stream).toBe(false)
+  expect(seen.body.messages[0].role).toBe('system')
+  expect(seen.body.messages[1].content).toContain('Latest task')
+  expect(seen.body.messages[1].content).not.toContain('tool data')
+})
+
+test('analysis profile accepts Chat Completions and keeps Responses as the default', () => {
+  const profile = { mode: 'suggest', upstreamBaseUrl: 'https://apihub.agnes-ai.com/v1', model: 'agnes-3.0-flash', apiKeyEnv: null }
+  expect(validateAnalysisProfile({ ...profile, protocol: 'chat-completions' }).protocol).toBe('chat-completions')
+  expect(validateAnalysisProfile(profile).protocol).toBe('responses')
+  expect(() => validateAnalysisProfile({ ...profile, protocol: 'messages' })).toThrow('Analysis protocol')
 })
 
 test('apply mode changes only the latest plain user text and relays task provider SSE', async () => {

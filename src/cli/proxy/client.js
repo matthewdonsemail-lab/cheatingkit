@@ -122,18 +122,20 @@ async function configureAnthropicInteractively() {
 
 async function configureInteractively() {
   const hermesProfile = loadHermesProfile()
-  const provider = await clack.select({ message: 'Provider for Codex Responses requests', options: [
+  const selectedProvider = await clack.select({ message: 'Provider for Codex Responses requests', options: [
     { value: 'openai', label: 'OpenAI API', hint: 'native Responses API' },
     { value: 'custom-responses', label: 'Custom Responses-compatible endpoint', hint: 'must support POST /v1/responses' },
     { value: 'anthropic', label: 'Anthropic API', hint: 'translate supported Codex Responses requests to Messages' },
+    { value: 'agnes', label: 'Agnes 3.0 Flash', hint: 'Chat Completions at apihub.agnes-ai.com' },
     { value: 'chat-completions', label: 'Chat Completions-compatible endpoint', hint: 'translate supported Codex Responses requests to Chat Completions' },
   ] })
-  if (clack.isCancel(provider)) { clack.cancel('Proxy setup stopped'); return null }
-  const upstreamBaseUrl = provider === 'openai' ? 'https://api.openai.com/v1' : await clack.text({ message: 'Provider API base URL ending in /v1', initialValue: provider === 'anthropic' ? 'https://api.anthropic.com/v1' : provider === 'chat-completions' ? hermesProfile?.upstreamBaseUrl : undefined, validate: (value) => { try { validateUpstream(value); return } catch (error) { return error.message } } })
+  if (clack.isCancel(selectedProvider)) { clack.cancel('Proxy setup stopped'); return null }
+  const provider = selectedProvider === 'agnes' ? 'chat-completions' : selectedProvider
+  const upstreamBaseUrl = provider === 'openai' ? 'https://api.openai.com/v1' : await clack.text({ message: 'Provider API base URL ending in /v1', initialValue: selectedProvider === 'agnes' ? 'https://apihub.agnes-ai.com/v1' : provider === 'anthropic' ? 'https://api.anthropic.com/v1' : provider === 'chat-completions' ? hermesProfile?.upstreamBaseUrl : undefined, validate: (value) => { try { validateUpstream(value); return } catch (error) { return error.message } } })
   if (clack.isCancel(upstreamBaseUrl)) { clack.cancel('Proxy setup stopped'); return null }
-  const model = await clack.text({ message: 'Model ID to select in Codex', initialValue: provider === 'chat-completions' ? hermesProfile?.model : undefined, validate: (value) => value?.trim() ? undefined : 'Enter a model ID' })
+  const model = await clack.text({ message: 'Model ID to select in Codex', initialValue: selectedProvider === 'agnes' ? 'agnes-3.0-flash' : provider === 'chat-completions' ? hermesProfile?.model : undefined, validate: (value) => value?.trim() ? undefined : 'Enter a model ID' })
   if (clack.isCancel(model)) { clack.cancel('Proxy setup stopped'); return null }
-  const credential = await chooseCredential('codex', { defaultEnv: provider === 'openai' ? 'OPENAI_API_KEY' : provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : provider === 'chat-completions' ? hermesProfile?.apiKeyEnv || '' : '', allowKeyless: !['openai', 'anthropic'].includes(provider) })
+  const credential = await chooseCredential('codex', { defaultEnv: provider === 'openai' ? 'OPENAI_API_KEY' : provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : provider === 'chat-completions' ? hermesProfile?.apiKeyEnv || '' : '', allowKeyless: selectedProvider !== 'agnes' && !['openai', 'anthropic'].includes(provider) })
   if (!credential) return null
   return saveProfile({ provider, upstreamBaseUrl, model, ...credential })
 }
@@ -161,13 +163,20 @@ export async function runProxyCommand(args) {
       { value: 'apply', label: 'Apply proposal', hint: 'replace latest plain user text before forwarding' },
     ] })
     if (clack.isCancel(mode)) { clack.cancel('Analysis setup stopped'); return }
-    const upstreamBaseUrl = await clack.text({ message: 'Separate analysis model API base URL ending in /v1', initialValue: 'https://api.openai.com/v1', validate: (value) => { try { validateUpstream(value); return } catch (error) { return error.message } } })
+    const selectedAnalysisProvider = await clack.select({ message: 'Analysis model provider', options: [
+      { value: 'agnes', label: 'Agnes 3.0 Flash', hint: 'Chat Completions at apihub.agnes-ai.com' },
+      { value: 'responses', label: 'OpenAI Responses', hint: 'POST /v1/responses' },
+      { value: 'chat-completions', label: 'Other Chat Completions', hint: 'POST /v1/chat/completions' },
+    ] })
+    if (clack.isCancel(selectedAnalysisProvider)) { clack.cancel('Analysis setup stopped'); return }
+    const protocol = selectedAnalysisProvider === 'agnes' ? 'chat-completions' : selectedAnalysisProvider
+    const upstreamBaseUrl = await clack.text({ message: 'Separate analysis model API base URL ending in /v1', initialValue: selectedAnalysisProvider === 'agnes' ? 'https://apihub.agnes-ai.com/v1' : protocol === 'responses' ? 'https://api.openai.com/v1' : undefined, validate: (value) => { try { validateUpstream(value); return } catch (error) { return error.message } } })
     if (clack.isCancel(upstreamBaseUrl)) { clack.cancel('Analysis setup stopped'); return }
-    const model = await clack.text({ message: 'Analysis model ID', validate: (value) => value?.trim() ? undefined : 'Enter a model ID' })
+    const model = await clack.text({ message: 'Analysis model ID', initialValue: selectedAnalysisProvider === 'agnes' ? 'agnes-3.0-flash' : undefined, validate: (value) => value?.trim() ? undefined : 'Enter a model ID' })
     if (clack.isCancel(model)) { clack.cancel('Analysis setup stopped'); return }
-    const credential = await chooseCredential('analysis', { defaultEnv: 'OPENAI_API_KEY', allowKeyless: true })
+    const credential = await chooseCredential('analysis', { defaultEnv: 'OPENAI_API_KEY', allowKeyless: selectedAnalysisProvider !== 'agnes' })
     if (!credential) return
-    console.log(JSON.stringify(saveAnalysisProfile({ mode, upstreamBaseUrl, model, ...credential })))
+    console.log(JSON.stringify(saveAnalysisProfile({ mode, protocol, upstreamBaseUrl, model, ...credential })))
     clack.outro('Restart the proxy to apply analysis settings.')
     return
   }
