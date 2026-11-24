@@ -26,7 +26,18 @@ The version controlled website installers look up npm's `latest` release, instal
 ck setup
 ```
 
-Setup detects local Claude Code, Codex, and Hermes session sources. It creates `~/.cheatingkit/config.yaml` and a local SQLite database, then asks whether to import existing sessions. If local models are enabled, it can also label imported messages. Your index remains on your machine.
+Setup detects local Claude Code, Codex, and Hermes session sources. It creates `~/.cheatingkit/config.yaml` and a local SQLite database, then offers to import existing sessions, build the semantic index, and install prompt hooks. Your index remains on your machine.
+
+Restart each harness after installing hooks. Codex may ask you to trust the hook definition. For every new prompt, CheatingKit imports new local records and supplies a bounded context pack containing related earlier user requests, nearby later user messages, observed warning responses, and exact source IDs. The current prompt stays intact.
+
+Preview or refresh this context at any time:
+
+```sh
+ck index
+ck context --prompt "Continue the loader investigation"
+```
+
+`ck hooks install` adds the prompt integrations later; `ck hooks remove` removes only CheatingKit's entries.
 
 ## Inspect your history
 
@@ -36,7 +47,7 @@ ck timeline
 ck leadups
 ```
 
-`ck sessions` lists imported sessions. `ck timeline` shows recorded events and model changes. `ck leadups` shows the messages before recorded warnings. After you have labeled messages with `ck label`, use `ck areas` for a topic summary. Run `ck ingest` when you have new conversations to import.
+`ck sessions` lists imported sessions. `ck timeline` shows recorded events and model changes. `ck leadups` shows the messages before recorded warnings. After you have labeled messages with `ck label`, use `ck areas` for a topic summary. Run `ck index` when you want new conversations added to semantic search.
 
 ## Keep ck current
 

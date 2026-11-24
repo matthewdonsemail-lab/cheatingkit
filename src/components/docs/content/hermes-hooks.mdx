@@ -8,4 +8,4 @@ Before a model call, the plugin sends session identity, workspace, and current u
 
 ## Installation
 
-The `ck setup` design installs a versioned CheatingKit plugin entry, records what it changed, and supports removal. The plugin never writes transcript rows into CheatingKit directly; it requests a read from Hermes's store. [Getting started](/docs/getting-started) lists the current development commands and integration status.
+`ck setup` or `ck hooks install` writes a native plugin to `~/.hermes/plugins/cheatingkit` and enables it with `hermes plugins enable cheatingkit`. The plugin calls the same local context command as the other harnesses and returns `{"context": "..."}` from `pre_llm_call`. If Hermes is not on PATH during installation, run the enable command after installing it. `ck hooks remove` disables and removes the plugin. [Getting started](/docs/getting-started) shows the installed commands.

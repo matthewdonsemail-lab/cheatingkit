@@ -50,6 +50,7 @@ function claudeLine(w, path, row, position) {
   if (row.type !== 'user' && row.type !== 'assistant') return false
   const msg = row.message || {}
   put(w, 'claudeCode', id, path, position, sourceId, timestamp, row.type, msg.content, msg.model, row.type)
+  if (row.cwd) w.session.run('claudeCode', id, path, timestamp, timestamp, row.cwd, null)
   for (const [index, block] of (Array.isArray(msg.content) ? msg.content : []).entries()) {
     if (block.type === 'tool_use') w.tool.run('claudeCode', id, block.id || `${sourceId}:${index}`, sourceId, timestamp, block.name || 'tool', asJson(block.input), null)
     if (block.type === 'tool_result' && block.tool_use_id) w.output.run(asJson(block.content), 'claudeCode', id, block.tool_use_id)
@@ -208,4 +209,13 @@ export function ingest(db, env = process.env, report = () => {}) {
     report(`${harness.label}: ${files.length} source${files.length === 1 ? '' : 's'}, ${count} new record${count === 1 ? '' : 's'}`)
   }
   return results
+}
+
+export function ingestPath(db, harness, path) {
+  if (!path || !['claudeCode', 'codex', 'hermes'].includes(harness)) return 0
+  try {
+    if (harness === 'hermes') return importHermes(db, path)
+    if (!path.endsWith('.jsonl')) return 0
+    return importJsonl(db, harness, path)
+  } catch { return 0 }
 }

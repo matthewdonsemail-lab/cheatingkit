@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { pipeline, env } from '@huggingface/transformers'
-import { modelPath, models } from '../models/client.js'
+import { models } from '../models/client.js'
+import { loadConfig, expandPath } from '../config/client.js'
 
 const embedModel = models.find((model) => model.key === 'minilm')
 const modelId = `${embedModel.id}@${embedModel.revision}`
@@ -17,8 +18,10 @@ function textOf(raw) {
 
 export async function localEmbed(texts) {
   if (!extractor) {
-    env.allowRemoteModels = false
-    extractor = await pipeline('feature-extraction', modelPath(embedModel), { dtype: 'q8', device: 'cpu' })
+    const config = loadConfig()
+    env.cacheDir = expandPath(config.models.embedding.cachePath)
+    env.allowRemoteModels = true
+    extractor = await pipeline('feature-extraction', embedModel.id, { revision: embedModel.revision, dtype: 'q8', device: 'cpu' })
   }
   const output = await extractor(texts, { pooling: 'mean', normalize: true })
   const width = output.dims.at(-1)

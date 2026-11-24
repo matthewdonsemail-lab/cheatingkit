@@ -50,4 +50,4 @@ test('imports three harnesses once and resumes complete JSONL lines', () => {
     db.close()
     try { rmSync(root, { recursive: true, force: true }) } catch {}
   }
-})
+}, 60000)

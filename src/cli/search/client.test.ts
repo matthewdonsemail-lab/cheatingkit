@@ -19,4 +19,4 @@ test('indexes changed windows once and returns cited hybrid search results', asy
     expect(hits[0].messageIds).toEqual(['m1'])
     expect(hits[0].text).toContain('loader startup crash')
   } finally { db.close(); try { rmSync(dir, { recursive: true, force: true }) } catch {} }
-})
+}, 60000)

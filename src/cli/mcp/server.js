@@ -1,10 +1,10 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { expandPath, loadConfig, configEnvironment } from '../config/client.js'
-import { ingest } from '../harnesses/ingest.js'
+import { expandPath, loadConfig } from '../config/client.js'
 import { openDatabase } from '../storage/client.js'
-import { contextFor, searchSessions } from '../search/client.js'
+import { searchSessions } from '../search/client.js'
+import { buildContextPack } from '../context/client.js'
 import { installedVersion } from '../updates/client.js'
 
 export async function serveMcp() {
@@ -16,7 +16,6 @@ export async function serveMcp() {
   }, async ({ query, harness, limit }) => {
     const db = openDatabase(expandPath(config.database.path))
     try {
-      ingest(db, configEnvironment(config), () => {})
       const hits = await searchSessions(db, query, { harness, limit })
       return { content: [{ type: 'text', text: JSON.stringify(hits, null, 2) }] }
     } finally { db.close() }
@@ -27,8 +26,7 @@ export async function serveMcp() {
   }, async ({ request, harness, cwd }) => {
     const db = openDatabase(expandPath(config.database.path))
     try {
-      ingest(db, configEnvironment(config), () => {})
-      const text = await contextFor(db, request, { harness, cwd, maxChars: 7000 })
+      const text = await buildContextPack(db, request, { harness, cwd, maxChars: 7000 })
       return { content: [{ type: 'text', text: text || 'No indexed context found.' }] }
     } finally { db.close() }
   })
