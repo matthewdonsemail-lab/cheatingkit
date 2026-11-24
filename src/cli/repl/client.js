@@ -7,7 +7,7 @@ import { createMessageGate } from '../proxy/gate.js'
 import { createEnvironment, loadSession, readSnapshotManifest, removeRepl } from './environment.js'
 import { capabilityFrame } from './capabilities.js'
 
-const commands = ['open', 'exec', 'state', 'evaluate', 'snapshot', 'restore', 'audit', 'show', 'close', 'help']
+const commands = ['open', 'exec', 'round', 'run', 'state', 'evaluate', 'snapshot', 'restore', 'audit', 'show', 'close', 'help']
 
 function option(args, name) {
   const at = args.indexOf(name)
@@ -38,6 +38,7 @@ function handlers(config, database) {
         .run(randomUUID(), replId, data.trigger || 'manual', data.decision || 'allow', data.reason || '', JSON.stringify(data.evidence || []), JSON.stringify(data.dimensions || {}), data.compliance ?? null, new Date().toISOString())
       return { recorded: true }
     },
+    'audit.exists': async ({ path: target }) => ({ exists: existsSync(target), path: target }),
   }
 }
 
@@ -71,6 +72,33 @@ export async function runReplCommand(args) {
     const session = loadSession(database, replId)
     if (!session) throw new Error(`Unknown repl ${replId}`)
 
+    if (action === 'round' || action === 'run') {
+      const requirements = []
+      for (let index = 0; index < args.length; index++) {
+        if (args[index] === '--require' && args[index + 1]) requirements.push(args[index + 1])
+      }
+      const limit = args.includes('--limit') ? Number(option(args, '--limit')) : 10
+      const artifact = option(args, '--artifact')
+      const results = await reopen({
+        config, database, replId, session,
+        run: async (env) => {
+          const { openState, setArtifactPath, decide } = await import('./mea.js')
+          const { runRound } = await import('./rounds.js')
+          if (requirements.length) openState(database, env, { requirements })
+          const outcomes = []
+          for (let index = 0; index < limit; index++) {
+            const outcome = await runRound({ db: database, env, replId, goal: session.goal, onHostRequest: (data, ctx) => handlers(config, database)[data.type](data, ctx) })
+            outcomes.push({ round: outcome.round, control: outcome.control, verdict: outcome.verdict, recordId: outcome.recordId })
+            if (outcome.control !== 'execute') break
+            if (artifact) setArtifactPath(database, outcome.recordId, artifact)
+            if (decide(database, replId).control !== 'execute') break
+          }
+          return { outcomes, final: decide(database, replId) }
+        },
+      })
+      console.log(JSON.stringify(results))
+      return
+    }
     if (action === 'show') { console.log(JSON.stringify(session, null, 2)); return }
     if (action === 'state') {
       console.table(database.prepare('SELECT kind,status,body FROM replTaskState WHERE replId=?').all(replId))

@@ -163,6 +163,7 @@ export function openDatabase(path = databasePath()) {
       body TEXT NOT NULL,
       status TEXT NOT NULL,
       evidence TEXT NOT NULL DEFAULT '[]',
+      artifactPath TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL
     );
