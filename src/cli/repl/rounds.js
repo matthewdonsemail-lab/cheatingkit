@@ -49,9 +49,9 @@ export async function runRound({ db, env, replId, goal, onHostRequest, copies = 
     attempts,
     onHostRequest,
   })
+  const clean = verdict.clean?.length || 0
   const applied = applyAudit(db, replId, { round, ...verdict })
   const { raiseHeartbeat } = await import('./heartbeat.js')
-  const clean = verdict.clean?.length || 0
   raiseHeartbeat(db, {
     replId, round, kind: verdict.result === 'clean' ? 'clean' : 'retry',
     text: verdict.result === 'clean'
