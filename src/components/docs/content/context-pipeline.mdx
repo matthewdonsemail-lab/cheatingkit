@@ -1,54 +1,23 @@
-# Local context and search architecture
+# Local context and search
 
-CheatingKit turns Claude Code, Codex, and Hermes sessions into a local, searchable account of what the user asked, what changed, and where work stopped. One incremental pass over durable records builds a hybrid search index and structured goal candidates. Saved cursors make the pass safe to replay after interruption. [Getting started](/docs/getting-started) records the working CLI surface separately.
+CheatingKit uses local Claude Code, Codex, and Hermes transcripts to provide source-linked context for a new request. The shared pipeline imports durable records, retrieves related user messages, attaches nearby later messages and observed warning responses, then returns a bounded context pack. The user's prompt is left intact.
 
-## Source records
+## Import and index
 
-Each harness adapter reads its own durable store and writes normalized sessions, messages, tool calls, and model observations into SQLite. Every row retains harness, session, source path or message ID, source position, role, timestamp quality, and raw-source reference. The source rows are authoritative. An assistant summary or tool result may add evidence, but the user's own messages determine the requested goal and its later corrections.
+`ck ingest` reads complete new JSONL rows or Hermes message IDs into SQLite. Source cursors and unique message IDs make repeated imports safe. `ck index` imports new rows and updates four-message search windows. Changed windows receive MiniLM embeddings; SQLite FTS5 supplies keyword matches. The index can be rebuilt from imported messages.
 
-## Incremental indexing
+`ck label` separately assigns topic labels to messages and records the lead-up to observed cyber warning responses. These observations are drawn from the response text and source order. They are evidence about a prior session, not a prediction that a new prompt will receive the same response.
 
-1. Read complete source changes after the import cursor. The index pass groups changed rows by session and reads from its own index cursor.
-2. Build ordered four-message windows with one-message overlap. Store their message IDs, source order, text hash, and harness metadata.
-3. Compare each window with the saved generation. Re-embed only changed windows with [MiniLM](/docs/models/minilm), upsert or remove vectors, and refresh BM25 terms. A model or dimension change forces a full vector rebuild.
-4. Screen changed user messages with [GLiNER 2.5](/docs/models/gliner) for action, target, goal, constraints, and completion criteria. Save candidates with confidence, model/schema revision, and source IDs.
-5. Link observed warning responses and model changes to exact source events and preceding message IDs. Flush derived files, check the generation, then commit the index cursor. A replay uses stable IDs and idempotent upserts.
+## Per-message recall
 
-The pass runs in bounded slices, measures backlog and per-stage latency, and continues from the last committed cursor after a crash. The search sidecars are rebuildable from SQLite. Transcript indexing, extraction, and retrieval run on the user's device.
+At a prompt boundary, CheatingKit imports new records from the current transcript or Hermes store and searches indexed history across the three harnesses. MiniLM and FTS5 contribute candidate windows. Run `ck index` to build the semantic index before using prompt context; the hook returns no context until the index is ready. Known workspace paths keep results within the current workspace; records without a workspace path can still appear. The context pack contains related user messages, nearby later user messages, nearby assistant responses, and observed warning responses. Every excerpt includes its harness, session, and message ID.
 
-## Local models
+Later user messages are shown as later evidence, rather than silently replacing the earlier request. The current prompt remains authoritative. Results are limited to 4,500 characters by default; no relevant match returns no injected context.
 
-[MiniLM](/docs/models/minilm) creates normalized 384-dimensional meaning vectors from conversation windows and search queries. [GLiNER 2.5](/docs/models/gliner) supplies structured candidate fields from user-authored messages. The exact pinned revisions, file sizes, and hashes are on those pages. GLiNER's task schema is evaluated on coding-agent transcripts; a candidate is evidence to inspect, not an instruction to invent a goal.
+## Harness delivery
 
-## Search and goal recall
+Claude Code and Codex use `UserPromptSubmit` command hooks. Hermes uses a native `pre_llm_call` plugin. All three invoke the same `ck hook` command and database. `ck context --prompt "..."` previews that output; `ck mcp` exposes the same context builder through the `task_context` MCP tool. Install or remove the adapters with `ck hooks install` and `ck hooks remove`.
 
-For a new request, the context service searches both BM25 exact terms and MiniLM vectors. It fuses the ranked lists, applies workspace, harness, session, and time constraints, and opens the source messages behind the best windows. GLiNER candidates help identify which passages contain a stated goal. The resolver follows the event order to find later corrections or cancellations. It prefers an explicit, recent user statement over an older similar passage.
+## Current scope
 
-The output is a bounded context pack: current request, earlier user statements, later corrections, relevant source IDs, and an uncertainty marker. It preserves the original request. Weak or contradictory matches produce no inferred goal.
-
-For example, “continue the loader crash” can retrieve an earlier session about `loader.dll`. If a later user message says “only inspect, do not patch,” that correction is included with its source ID and controls the retrieved context.
-
-## Harness boundary
-
-Each harness adapter uses its supported prompt or pre-call integration to request a context pack. The common local service accepts harness, session, workspace, current user message, and a source cursor. It returns cited context within an output budget. Session and tool events trigger incremental import, but the durable transcript remains the source for messages and calls.
-
-Warning and refusal-like responses are recorded as observations, along with the model in use when known. The timeline makes the preceding goal and context inspectable. Detection alone does not establish why a response occurred; it does not authorize automatic rewriting or retrying a prompt to get around a refusal.
-
-## SQLite projections
-
-`sourceRecords`, `sessions`, `messages`, `toolCalls`, and `timeline` are the durable base. `searchChunks` holds window IDs and provenance. `goalCandidates` holds structured extraction and model metadata. `warningObservations` links response and lead-up source IDs. `indexCursors` and `modelArtifacts` record progress and exact pins. BM25 and vector sidecars are derived from this base.
-
-A generation check records source high-water mark, model identity, schema version, chunk count, and required sidecar files. Missing or incompatible sidecars trigger a rebuild before the cursor is trusted. This is the [database contract](/docs/database).
-
-## CLI and releases
-
-The intended installed command is `ck`: `ck setup`, `ck harnesses`, `ck index run`, `ck index status`, `ck search`, `ck context explain`, `ck models status`, and `ck update --track stable|nightly`. The currently implemented commands are listed in [Getting started](/docs/getting-started). Bun runs the package, Effect structures service and error boundaries, and Clack presents interactive setup. The website installer resolves an exact published npm version and verifies the installed CLI version.
-
-A four-part display counter expresses the requested `00.00.00.00` sequence. npm publication uses valid SemVer: `X.Y.Z` for stable and `X.Y.(Z+1)-nightly.YYYYMMDDHHmm.sha7` for nightly. CI derives the display build and package version from the staged release metadata; the installer reads npm's published dist-tag and installs that exact version.
-
-## Acceptance checks
-
-- Import all three harness formats, including tool results, partial JSONL tails, model changes, and source edits.
-- Interrupt indexing before and after a flush, then replay without skipped source ranges or duplicate chunks.
-- Measure goal recall, wrong-goal rate, later-correction handling, cold and warm CPU latency, and bounded context size against labeled sessions.
-- Rebuild search and extraction after a model-pin or schema change without rereading hosted services.
+The current corpus is indexed with MiniLM and keyword search. Topic labels come from MiniLM. Structured goal extraction with GLiNER and a separately trained refusal likelihood model are later extensions; they do not run in this release. The context pack therefore reports observed responses and source-linked messages without inventing a hidden goal or a numeric refusal probability.

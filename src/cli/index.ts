@@ -3,10 +3,12 @@ import * as clack from '@clack/prompts'
 import { Effect } from 'effect'
 import { spawnSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
+import { buildContextPack } from './context/client.js'
 import YAML from 'yaml'
 import { configEnvironment, configPath, ensureConfig, expandPath, loadConfig } from './config/client.js'
 import { detectHarnesses } from './harnesses/detect.js'
-import { ingest } from './harnesses/ingest.js'
+import { ingest, ingestPath } from './harnesses/ingest.js'
+import { installHooks, removeHooks } from './harnesses/hooks.js'
 import { labelMessages } from './models/label.js'
 import { openDatabase } from './storage/client.js'
 import { checkUpdates, installedVersion } from './updates/client.js'
@@ -22,7 +24,7 @@ async function updateNotice(config) {
 
 const run = Effect.gen(function* () {
   if (command === 'help' || command === '--help') {
-    console.log('ck setup | detect | ingest | label | sessions | timeline | areas | leadups | version | updates | update [--track stable|nightly] [--apply]')
+    console.log('ck setup | detect | ingest | index | context --prompt TEXT | hooks install|remove | mcp | label | sessions | timeline | areas | leadups | version | updates | update [--track stable|nightly] [--apply]')
     return
   }
   if (command === 'version' || command === '--version' || command === '-v') {
@@ -52,14 +54,31 @@ const run = Effect.gen(function* () {
           try { yield* Effect.tryPromise(() => labelMessages(labeled, config, (line) => clack.log.info(line))) }
           finally { labeled.close() }
         }
+        const makeIndex = yield* Effect.promise(() => clack.confirm({ message: 'Build the semantic session index now?', initialValue: true }))
+        if (!clack.isCancel(makeIndex) && makeIndex) {
+          const { indexSessions } = yield* Effect.promise(() => import('./search/client.js'))
+          const indexed = yield* Effect.try(() => openDatabase(expandPath(config.database.path)))
+          try { yield* Effect.tryPromise(() => indexSessions(indexed, (line) => clack.log.info(line))) }
+          finally { indexed.close() }
+        }
       }
     }
-    clack.outro(`Configuration: ${path}. Run 'ck ingest' after new conversations.`)
+    const hooks = yield* Effect.promise(() => clack.confirm({ message: 'Install per-message context hooks for Claude Code, Codex, and Hermes?', initialValue: true }))
+    if (!clack.isCancel(hooks) && hooks) clack.log.info(JSON.stringify(installHooks()))
+    clack.outro(`Configuration: ${path}. Run 'ck index' after new conversations.`)
     yield* Effect.promise(() => updateNotice(config))
     return
   }
   const config = loadConfig()
   const env = configEnvironment(config)
+  if (command === 'mcp') { const { serveMcp } = yield* Effect.promise(() => import('./mcp/server.js')); yield* Effect.tryPromise(() => serveMcp()); return }
+  if (command === 'hooks') {
+    const action = process.argv[3]
+    if (action === 'install') console.log(JSON.stringify(installHooks(), null, 2))
+    else if (action === 'remove') console.log(JSON.stringify(removeHooks(), null, 2))
+    else throw new Error('Use ck hooks install or ck hooks remove')
+    return
+  }
   if (command === 'detect') {
     for (const item of detectHarnesses(env)) console.log(`${item.label}\t${item.present ? 'found' : 'missing'}\t${item.path}`)
     return
@@ -93,6 +112,31 @@ const run = Effect.gen(function* () {
   try {
     if (command === 'ingest') {
       yield* Effect.try(() => ingest(db, env, console.log))
+    } else if (command === 'index') {
+      yield* Effect.try(() => ingest(db, env, console.log))
+      const { indexSessions } = yield* Effect.promise(() => import('./search/client.js'))
+      console.log(JSON.stringify(yield* Effect.tryPromise(() => indexSessions(db, console.log))))
+    } else if (command === 'context' || command === 'hook') {
+      const input = command === 'hook' ? yield* Effect.promise(async () => {
+        let raw = ''
+        for await (const chunk of process.stdin) raw += chunk
+        return JSON.parse(raw || '{}')
+      }) : {}
+      const at = process.argv.indexOf('--prompt')
+      const prompt = input.prompt || input.user_message || (at >= 0 ? process.argv[at + 1] : '')
+      if (!prompt) { if (command === 'context') throw new Error('Use ck context --prompt TEXT'); return }
+      if (command === 'hook') yield* Effect.try(() => {
+        const harness = process.argv.includes('--harness') ? process.argv[process.argv.indexOf('--harness') + 1] : ''
+        const source = harness === 'hermes' ? `${env.CHEATINGKIT_HERMES_DIR}/state.db` : input.transcript_path
+        ingestPath(db, harness, source)
+      })
+      const pack = yield* Effect.tryPromise(() => buildContextPack(db, prompt, {
+        harness: process.argv.includes('--harness') ? process.argv[process.argv.indexOf('--harness') + 1] : undefined,
+        sessionId: input.session_id, cwd: input.cwd || process.cwd(),
+      }))
+      if (command === 'hook') {
+        if (pack) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: pack } }))
+      } else console.log(pack || 'No relevant local session context found.')
     } else if (command === 'label') {
       const result = yield* Effect.tryPromise(() => labelMessages(db, config, console.log))
       console.log(JSON.stringify(result))
@@ -117,7 +161,7 @@ const run = Effect.gen(function* () {
       throw new Error(`Unknown command: ${command}`)
     }
   } finally { db.close() }
-  yield* Effect.promise(() => updateNotice(config))
+  if (!['hook', 'context'].includes(command)) yield* Effect.promise(() => updateNotice(config))
 })
 
-Effect.runPromise(run).catch((error) => { console.error(error.message || error); process.exitCode = 1 })
+Effect.runPromise(run).catch((error) => { if (command !== 'hook') { console.error(error.message || error); process.exitCode = 1 } })

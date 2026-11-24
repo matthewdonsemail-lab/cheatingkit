@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { pipeline, env } from '@huggingface/transformers'
-import { modelPath, models } from '../models/client.js'
+import { models } from '../models/client.js'
+import { loadConfig, expandPath } from '../config/client.js'
 
 const embedModel = models.find((model) => model.key === 'minilm')
 const modelId = `${embedModel.id}@${embedModel.revision}`
@@ -17,8 +18,10 @@ function textOf(raw) {
 
 export async function localEmbed(texts) {
   if (!extractor) {
-    env.allowRemoteModels = false
-    extractor = await pipeline('feature-extraction', modelPath(embedModel), { dtype: 'q8', device: 'cpu' })
+    const config = loadConfig()
+    env.cacheDir = expandPath(config.models.embedding.cachePath)
+    env.allowRemoteModels = true
+    extractor = await pipeline('feature-extraction', embedModel.id, { revision: embedModel.revision, dtype: 'q8', device: 'cpu' })
   }
   const output = await extractor(texts, { pooling: 'mean', normalize: true })
   const width = output.dims.at(-1)
@@ -26,7 +29,7 @@ export async function localEmbed(texts) {
 }
 
 function chunksOf(rows) {
-  const messages = rows.map((row) => ({ ...row, text: textOf(row.body) })).filter((row) => row.text)
+  const messages = rows.map((row) => ({ ...row, text: textOf(row.body).slice(0, 1200) })).filter((row) => row.text)
   const chunks = []
   for (let start = 0; start < messages.length; start += 3) {
     const window = messages.slice(start, start + 4)
@@ -100,7 +103,7 @@ export async function searchSessions(db, query, options = {}, embed = localEmbed
     WHERE (? IS NULL OR c.harness=?) AND (? IS NULL OR s.cwd=?)`).all(options.harness || null, options.harness || null, options.cwd || null, options.cwd || null)
   const [queryVector] = await embed([query])
   const vector = rows.map((row) => ({ id: row.id, score: cosine(queryVector, new Float32Array(row.vector.buffer.slice(row.vector.byteOffset, row.vector.byteOffset + row.vector.byteLength))) }))
-    .sort((a, b) => b.score - a.score).slice(0, 50)
+    .filter((item) => item.score >= 0.3).sort((a, b) => b.score - a.score).slice(0, 50)
   const byId = new Map(rows.map((row) => [row.id, row]))
   const scores = new Map()
   for (const [rank, id] of keyword.entries()) if (byId.has(id)) scores.set(id, (scores.get(id) || 0) + 1 / (60 + rank + 1))

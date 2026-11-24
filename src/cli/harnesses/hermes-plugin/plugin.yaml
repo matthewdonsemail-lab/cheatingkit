@@ -1,0 +1,5 @@
+name: cheatingkit
+version: 0.1.0
+description: Recalled local session context for each Hermes turn
+provides_hooks:
+  - pre_llm_call

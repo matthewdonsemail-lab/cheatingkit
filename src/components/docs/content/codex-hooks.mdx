@@ -8,4 +8,4 @@ A prompt or session event identifies the current session and workspace. Cheating
 
 ## Installation
 
-The `ck setup` design records its own configuration entries and allows their removal without disturbing other hooks or MCP servers. It checks which event and context-output surfaces the installed Codex version exposes before enabling that integration. [Getting started](/docs/getting-started) lists the current development commands and integration status.
+`ck setup` or `ck hooks install` adds CheatingKit's `UserPromptSubmit` entry to `~/.codex/hooks.json` while preserving other entries. `ck hooks remove` removes its own entry. Codex can ask the user to trust a newly installed hook. The hook returns `additionalContext` beside the unchanged prompt. [Getting started](/docs/getting-started) shows the installed commands.

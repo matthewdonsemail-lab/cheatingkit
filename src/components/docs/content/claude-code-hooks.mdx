@@ -8,4 +8,4 @@ A session or tool event signals an incremental transcript import. The importer r
 
 ## Installation
 
-The `ck setup` design detects existing settings, adds only CheatingKit's own hook entries, and keeps a reversible record of what it installed. Each hook event has an independent ID; the transcript remains authoritative for messages and calls. [Getting started](/docs/getting-started) lists the current development commands and integration status.
+`ck setup` or `ck hooks install` adds CheatingKit's `UserPromptSubmit` entry to `~/.claude/settings.json` while preserving other hooks. `ck hooks remove` removes its own entry. The hook returns `additionalContext` beside the unchanged prompt. [Getting started](/docs/getting-started) shows the installed commands.
