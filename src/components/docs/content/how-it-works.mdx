@@ -15,3 +15,7 @@ A task may span multiple sessions and harnesses. A later prompt such as “conti
 5. Record warning and model-switch observations against the same timeline so the user can inspect what happened.
 
 For the exact cursor, index, and recovery design, see [Local context and search](/docs/models/context-pipeline).
+
+## Provider proxy preview
+
+The Codex provider proxy is a separate integration. `ck proxy setup` asks for an OpenAI Responses-compatible provider, model ID, and API key environment variable, then configures Codex with a dedicated local provider whose WebSocket transport is disabled. The resident server relays HTTP `/v1/responses` requests and SSE streams to the selected upstream using that provider key. `ck proxy remove codex` restores the prior Codex provider and model. Other provider protocols require their own adapters. This pass-through version does not use the context pack to alter a provider request. [Issue #10](https://github.com/matthewdonsemail-lab/cheatingkit/issues/10) specifies the analysis stage and additional harness adapters.
