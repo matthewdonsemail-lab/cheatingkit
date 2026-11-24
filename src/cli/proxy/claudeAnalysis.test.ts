@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { createClaudeMessagesAnalysis } from './claudeAnalysis.js'
+import { createProxyServer } from './server.js'
 
 const proposal = { output_text: 'Please inspect the repository and report findings.' }
 const request = {
@@ -7,6 +8,7 @@ const request = {
   system: [{ type: 'text', text: 'Keep citations' }],
   messages: [
     { role: 'user', content: 'Earlier request' },
+    { role: 'assistant', content: 'Earlier response' },
     { role: 'assistant', content: [{ type: 'tool_use', id: 'tool_1', name: 'read', input: { path: 'README.md' } }] },
     { role: 'user', content: [{ type: 'text', text: 'Inspect the repository' }] },
   ],
@@ -28,6 +30,9 @@ test('Claude suggest mode reads source-linked corpus evidence and preserves exac
   expect(result.body).toBe(raw)
   expect(analysisRequest.model).toBe('separate-analysis-model')
   expect(analysisRequest.input).toContain('Evidence [claudeCode/session#source]')
+  expect(analysisRequest.input).toContain('user: Earlier request')
+  expect(analysisRequest.input).toContain('assistant: Earlier response')
+  expect(analysisRequest.input).not.toContain('README.md')
   expect(recorded).toMatchObject({ originalText: 'Inspect the repository', proposedText: proposal.output_text, sourceIds: ['claudeCode/session#source'], applied: false })
 })
 
@@ -36,7 +41,7 @@ test('Claude apply mode replaces only latest user text and keeps the rest of the
     contextForPrompt: async () => '', fetchAnalysis: async () => Response.json(proposal) })
   const result = await analyze(raw)
   const expected = structuredClone(request)
-  expected.messages[2].content[0].text = proposal.output_text
+  expected.messages[3].content[0].text = proposal.output_text
   expect(JSON.parse(result.body)).toEqual(expected)
   expect(result.decision.applied).toBe(true)
 })
@@ -84,4 +89,34 @@ test('Claude analysis receives cancellation signal', async () => {
   const result = await pending
   expect(seen!.aborted).toBe(true)
   expect(result.body).toBe(raw)
+})
+
+test('Claude-only proxy uses separate analysis and task providers, preserves SSE, and bypasses token counting', async () => {
+  const taskRequests: Array<{ path: string, body: string, key: string | null }> = []
+  const analysisRequests: any[] = []
+  const taskProvider = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
+    taskRequests.push({ path: new URL(request.url).pathname, body: await request.text(), key: request.headers.get('x-api-key') })
+    return new Response('event: message_start\ndata: {"type":"message_start"}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n', { headers: { 'content-type': 'text/event-stream', 'x-request-id': 'task-1' } })
+  } })
+  const analyze = createClaudeMessagesAnalysis({ mode: 'apply', model: 'analysis-model', upstreamBaseUrl: 'https://analysis.example/v1', apiKey: 'analysis-key',
+    contextForPrompt: async () => 'Evidence [claudeCode/session#source]: prior response',
+    fetchAnalysis: async (_url: URL, init: RequestInit) => { analysisRequests.push({ body: JSON.parse(init.body as string), key: new Headers(init.headers).get('authorization') }); return Response.json(proposal) },
+  })
+  const proxy = createProxyServer({ port: 0, anthropicUpstreamBaseUrl: `http://127.0.0.1:${taskProvider.port}/v1`, anthropicApiKey: 'task-key', analyzeClaudeMessagesRequest: analyze })
+  try {
+    const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/messages`, { method: 'POST', body: raw, headers: { 'content-type': 'application/json', 'anthropic-version': '2023-06-01' } })
+    expect(await response.text()).toContain('event: message_stop')
+    expect(response.headers.get('x-request-id')).toBe('task-1')
+    expect(taskRequests[0].path).toBe('/v1/messages')
+    expect(taskRequests[0].key).toBe('task-key')
+    const expected = structuredClone(request)
+    expected.messages[3].content[0].text = proposal.output_text
+    expect(JSON.parse(taskRequests[0].body)).toEqual(expected)
+    expect(analysisRequests[0].key).toBe('Bearer analysis-key')
+    expect(analysisRequests[0].body.input).toContain('Evidence [claudeCode/session#source]')
+    const count = await fetch(`http://127.0.0.1:${proxy.port}/v1/messages/count_tokens`, { method: 'POST', body: raw })
+    expect(count.status).toBe(200)
+    expect(taskRequests[1]).toEqual({ path: '/v1/messages/count_tokens', body: raw, key: 'task-key' })
+    expect(analysisRequests).toHaveLength(1)
+  } finally { proxy.stop(true); taskProvider.stop(true) }
 })

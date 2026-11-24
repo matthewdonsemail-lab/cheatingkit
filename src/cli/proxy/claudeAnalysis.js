@@ -14,6 +14,14 @@ function latestPlainUser(messages) {
   return null
 }
 
+function priorPlainTurns(messages) {
+  return messages.filter((message) => ['user', 'assistant'].includes(message?.role)).map((message) => {
+    const content = message.content
+    const text = typeof content === 'string' ? content : Array.isArray(content) && content.length === 1 && content[0]?.type === 'text' && typeof content[0].text === 'string' ? content[0].text : ''
+    return text.trim() ? { role: message.role, content: text } : null
+  }).filter(Boolean)
+}
+
 // Reuse the same corpus retrieval, separate analysis-model call, and local decision
 // audit as Codex. This adapter only translates the selected Claude user text.
 export function createClaudeMessagesAnalysis(options = {}) {
@@ -28,10 +36,11 @@ export function createClaudeMessagesAnalysis(options = {}) {
       const result = await analyzeText(JSON.stringify({ input: [] }), { signal })
       return { body: rawBody, decision: result.decision }
     }
-    const virtual = JSON.stringify({ input: [{ role: 'user', content: selected.text }] })
+    const virtualTurns = [...priorPlainTurns(parsed.messages.slice(0, selected.index)), { role: 'user', content: selected.text }]
+    const virtual = JSON.stringify({ input: virtualTurns })
     const result = await analyzeText(virtual, { signal })
     if (!result.decision.applied) return { body: rawBody, decision: result.decision }
-    const replacement = JSON.parse(result.body).input[0].content
+    const replacement = JSON.parse(result.body).input.at(-1).content
     if (selected.block) parsed.messages[selected.index].content[0].text = replacement
     else parsed.messages[selected.index].content = replacement
     return { body: JSON.stringify(parsed), decision: result.decision }
