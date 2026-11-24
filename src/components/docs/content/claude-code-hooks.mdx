@@ -8,4 +8,4 @@ A session or tool event signals an incremental transcript import. The importer r
 
 ## Installation
 
-`ck setup` or `ck hooks install` adds CheatingKit's `UserPromptSubmit` entry to `~/.claude/settings.json` while preserving other hooks. `ck hooks remove` removes its own entry. The hook returns `additionalContext` beside the unchanged prompt. [Getting started](/docs/getting-started) shows the installed commands.
+`ck setup` or `ck hooks install` adds CheatingKit's `UserPromptSubmit` entry to `~/.claude/settings.json` while preserving other hooks. `ck hooks remove` removes its own entry. The hook returns `additionalContext` beside the unchanged prompt and does not enforce the [per-message gate](/docs/gate); enforcement requires the local proxy. [Getting started](/docs/getting-started) shows the installed commands.

@@ -16,8 +16,12 @@ Later user messages are shown as later evidence, rather than silently replacing 
 
 ## Harness delivery
 
-Claude Code and Codex use `UserPromptSubmit` command hooks. Hermes uses a native `pre_llm_call` plugin. All three invoke the same `ck hook` command and database. `ck context --prompt "..."` previews that output; `ck mcp` exposes the same context builder through the `task_context` MCP tool. Install or remove the adapters with `ck hooks install` and `ck hooks remove`.
+Claude Code and Codex use `UserPromptSubmit` command hooks. Hermes uses a native `pre_llm_call` plugin. All three invoke the same `ck hook` command and database. `ck context --prompt "..."` previews that output; `ck mcp` exposes the same context builder through the `task_context` MCP tool. Install or remove the adapters with `ck hooks install` and `ck hooks remove`. Hooks deliver context while the harness keeps its own provider and credentials; they do not enforce the [per-message gate](/docs/gate).
 
-## Current scope
+## Gate input
 
-The current corpus is indexed with MiniLM and keyword search. Topic labels come from MiniLM. Structured goal extraction with GLiNER and a separately trained refusal likelihood model are later extensions; they do not run in this release. The context pack therefore reports observed responses and source-linked messages without inventing a hidden goal or a numeric refusal probability.
+When a harness uses the local proxy, the same context builder supplies evidence to the gate before a request is forwarded. The gate keeps the original request intact, evaluates the outlined task and proposed wording together, and records the retrieved source IDs with its decision. Local history is evidence for scope and authorization, not proof of either, and no provider decision is predicted from it. See [The per-message gate](/docs/gate) for the decision flow.
+
+## Scope of the index
+
+The corpus is indexed with MiniLM and keyword search, and topic labels come from MiniLM. Structured extraction with [GLiNER 2.5](/docs/models/gliner) supplies goal, target, and constraint fields to the gate's scope check. Observed responses are kept separate from inferred causes: the context pack reports what happened in earlier sessions without inventing a hidden goal or a numeric likelihood about a provider.

@@ -1,0 +1,42 @@
+# The per-message gate
+
+CheatingKit has two delivery mechanisms that work together. Prompt hooks inject source-linked history into a request while the harness keeps its own provider and credentials. The **per-message gate** is the second mechanism: when a harness routes through the local proxy, the gate decides whether the request should be forwarded before any provider call happens.
+
+## Where the gate sits
+
+A request travels from the harness to the local proxy, through the gate, and only then to the provider. An allowed request is forwarded with the harness's own credentials. A blocked request returns a local response and the provider is never contacted.
+
+The gate runs on every eligible request across Codex Responses, Claude Messages, and Hermes Chat Completions. It reads the same local corpus and context builder that the hooks use. Prompt hooks alone do not enforce the gate; enforcement requires the harness to use the proxy.
+
+## What the gate checks
+
+For each message the gate keeps the original request intact and evaluates the outlined task and any proposed wording together:
+
+- **Scope and authorization.** It assesses whether the task is within the scope defined for this user and whether the authorization the task depends on is present. Local history is evidence, not proof of authorization.
+- **Independent validation.** A separate evaluation compares the original and proposed text against every goal, scope boundary, and constraint. Concealed intent, added authority, dropped constraints, and changed objectives fail validation.
+- **Context.** Retrieved source-linked history is attached to every evaluation, so the decision is made against the recorded task rather than the latest sentence alone.
+
+The gate returns `allow`, `block`, or `needs_clarification` before the provider call. Blocks, clarification requests, evaluator failures, malformed evaluator output, and unresolved validation failures all make zero provider calls. Enforced blocks return HTTP 403; clarification returns HTTP 422.
+
+## Revisions
+
+When validation finds that a rewrite lost fidelity, the gate can request a bounded revision — at most two — to restore the original goal and constraints or clarify wording. Revisions exist to preserve meaning, not to influence what the provider will decide. If fidelity is still unresolved after the limit, the gate blocks.
+
+## Records
+
+Every decision is linked to the request's attempt record as `gateDecision`. It contains the original request body, the original and proposed text, the retrieved evidence and its source IDs, each scope and validation result, every revision, and the termination reason. Request bodies are stored locally for this audit; authentication headers never are. Failed provider streams keep their embedded error code and message, with cyber warnings labelled `potential_cyber_warning` and transport failures `stream_error`.
+
+## Rollout
+
+The gate has three modes: `off` disables evaluation, `observe` records the decision and forwards the original bytes, and `enforce` applies the decision. The default is `observe`.
+
+```sh
+ck proxy analysis setup
+ck proxy start --gate-mode enforce
+```
+
+`CHEATINGKIT_GATE_MODE=off|observe|enforce` selects the mode for a launched proxy. Stop a running proxy before changing modes; `ck proxy status` reports the active mode. `ck proxy attempts [request ID]` shows the gate decision beside the observed outcome.
+
+## Limits
+
+The gate checks a task against locally defined scope and authorization criteria. It does not predict or optimize for a provider's decision, and it does not decide whether an activity is safe in a general sense. Local observations describe what happened in earlier sessions; they are not a guarantee about a new request.

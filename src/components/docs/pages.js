@@ -1,6 +1,7 @@
 import Intro from './content/intro.mdx'
 import GettingStarted from './content/getting-started.mdx'
 import Releases from './content/releases.mdx'
+import Gate from './content/gate.mdx'
 import CodeStructure from './content/code-structure.mdx'
 import HowItWorks from './content/how-it-works.mdx'
 import Harnesses from './content/harnesses.mdx'
@@ -29,16 +30,17 @@ export const pages = [
     slug: 'getting-started',
     title: 'Getting started',
     description: 'Install ck from cheatingkit.com and start using local sessions.',
-    sections: ['Install CheatingKit', 'Set up local sessions', 'Inspect your history', 'Keep ck current'],
+    sections: ['Install CheatingKit', 'Set up local sessions', 'Enable the per-message gate', 'Inspect your history', 'Keep ck current'],
     Content: GettingStarted,
   },
-  { slug: 'releases', title: 'Releases and installation', description: 'Install ck from the website and choose stable, nightly, or pinned versions.', sections: ['Install from the website', 'Choose a release', 'Update ck', 'How a version is published'], Content: Releases },
+  { slug: 'releases', title: 'Releases and installation', description: 'Install ck from the website and choose stable, nightly, or pinned versions.', sections: ['Install from the website', 'Choose a release', 'Update ck', 'How a version is published', 'Credentials for the proxy and gate'], Content: Releases },
+  { slug: 'gate', title: 'The per-message gate', description: 'How a request is checked before it is forwarded to the provider.', sections: ['Where the gate sits', 'What the gate checks', 'Revisions', 'Records', 'Rollout', 'Limits'], Content: Gate },
   { slug: 'code-structure', title: 'Code structure', description: 'Capability ownership and naming conventions.', sections: ['Naming rules', 'Ownership', 'Keeping docs in sync'], Content: CodeStructure },
   {
     slug: 'how-it-works',
     title: 'How it works',
     description: 'The high-level approach behind CheatingKit.',
-    sections: ['The context problem', 'The approach'],
+    sections: ['The context problem', 'The approach', 'The provider proxy and the gate'],
     Content: HowItWorks,
   },
   { slug: 'harnesses', title: 'Harnesses', description: 'Local session sources and indexing.', sections: ['Sources', 'What is indexed', 'Harness boundaries'], Content: Harnesses },
@@ -52,7 +54,7 @@ export const pages = [
   { slug: 'models', title: 'Models', description: 'Exact local models and their roles.', sections: ['Model roles', 'Why local', 'Processing example'], Content: Models },
   { slug: 'models/minilm', title: 'MiniLM embeddings', description: 'Exact local embedding model, operation, examples, and files.', sections: ['How it works', 'Why this model', 'Exact use example', 'Pinned files'], Content: ModelMiniLM },
   { slug: 'models/gliner', title: 'GLiNER 2.5 screening', description: 'Exact local extraction model, operation, examples, and files.', sections: ['How it works', 'Why this model', 'Exact use example', 'Pinned files'], Content: ModelGLiNER },
-  { slug: 'models/context-pipeline', title: 'Local context and search', description: 'Incremental indexing, search, and local model pipeline.', sections: ['Source records', 'Incremental indexing', 'Local models', 'Search and goal recall', 'Harness boundary', 'SQLite projections', 'CLI and releases', 'Acceptance checks'], Content: ContextPipeline },
+  { slug: 'models/context-pipeline', title: 'Local context and search', description: 'Incremental indexing, retrieval, harness delivery, and gate input.', sections: ['Import and index', 'Per-message recall', 'Harness delivery', 'Gate input', 'Scope of the index'], Content: ContextPipeline },
   { slug: 'database', title: 'Database design', description: 'SQLite source records, projections, and cursors.', sections: ['Source and projections', 'Cursors and recovery', 'Time and identity', 'Private data', 'Rebuild contract'], Content: Database },
 ]
 
