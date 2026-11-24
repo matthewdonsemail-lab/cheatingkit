@@ -260,9 +260,10 @@ export async function runProxyCommand(args) {
           seeds: analysis.mode === 'off' ? null : async ({ goal, count }) => {
             const { rewriteOnce } = await import('./analysis.js')
             const result = await rewriteOnce({
-              context: '', input: goal, protocol: analysis.protocol || 'responses', model: analysis.model,
+              context: '', input: `List ${count} search queries for this task, nothing else:
+${goal}`, protocol: analysis.protocol || 'responses', model: analysis.model,
               upstreamBaseUrl: analysis.upstreamBaseUrl, apiKey: providerKey('analysis', analysis), structuredOutput: false,
-              instructions: `Output exactly ${count} short search queries, one per line. No code, no prose, no numbering. Each query targets a different aspect of this prompt so they would retrieve different local history.`,
+              instructions: `You emit search queries only. Never answer the task, never write code. Reply with ${count} lines, each a different short query about a different aspect of the task.`,
             }).catch(() => ({ proposedText: '' }))
             const { parseSeeds } = await import('../repl/seeds.js')
             return parseSeeds(result?.proposedText).slice(0, count + 2)

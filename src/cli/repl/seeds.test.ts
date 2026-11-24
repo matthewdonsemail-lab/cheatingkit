@@ -19,7 +19,12 @@ test('a short pool repeats instead of collapsing to nothing', async () => {
 
 test('seed parsing takes JSON, lines and list markers', () => {
   expect(parseSeeds('["a","b"]')).toEqual(['a', 'b'])
-  expect(parseSeeds('1. alpha\n2. beta')).toEqual(['alpha', 'beta'])
-  expect(parseSeeds('- x\n* y')).toEqual(['x', 'y'])
+  expect(parseSeeds('1. alpha one\n2. beta two')).toEqual(['alpha one', 'beta two'])
+  expect(parseSeeds('- cucumber salads\n* potato purees')).toEqual(['cucumber salads', 'potato purees'])
   expect(parseSeeds('')).toEqual([])
+})
+
+test('seed parsing rejects code and keeps prose', () => {
+  const reply = '# Title\n\nHere is a script for you\n\n```bash\n#!/usr/bin/env bash\nset -euo pipefail\nTARGET="${1:-x}"\n```'
+  expect(parseSeeds(reply)).toEqual(['Here is a script for you'])
 })

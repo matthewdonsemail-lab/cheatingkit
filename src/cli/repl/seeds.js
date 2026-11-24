@@ -50,6 +50,12 @@ export function parseSeeds(text) {
   } catch { /* not JSON */ }
   return raw.split('\n')
     .map((line) => line.replace(/^\s*(?:[-*]|\d+[.)])\s*/, '').trim())
-    // Code fences and anything long enough to be code rather than a query.
-    .filter((line) => line && !line.startsWith('```') && !line.endsWith(':') && line.length <= 160)
+    // Query-shaped lines only: a reply that drifts into answering the task still yields
+    // seeds instead of shell script fragments.
+    .filter((line) => {
+      if (!line || line.endsWith(':') || line.startsWith('```') || line.startsWith('#!')) return false
+      if (/^[#{}$/'"<>]|^\s*(?:set|echo|cat|for|while|if|fi|done|then|export)\b/.test(line)) return false
+      if (/^[A-Z_]+=/.test(line)) return false
+      return line.length >= 8 && line.length <= 120
+    })
 }
