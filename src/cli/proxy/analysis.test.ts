@@ -18,7 +18,7 @@ test('suggest mode sends corpus evidence to separate analysis model and forwards
   })
   const result = await analyze(raw)
   expect(result.body).toBe(raw)
-  expect(result.decision).toMatchObject({ mode: 'suggest', applied: false, proposedText: 'Clearer latest task' })
+  expect(result.decision).toMatchObject({ mode: 'suggest', applied: false, originalText: 'Latest task', proposedText: 'Clearer latest task', sourceIds: ['claudeCode/session#message'] })
   expect(seen.target).toBe('https://analysis.example/v1/responses')
   expect(seen.auth).toBe('Bearer analysis-secret')
   expect(seen.body.model).toBe('analysis-model')
@@ -60,4 +60,29 @@ test('mixed media user input is not rewritten', async () => {
     fetchAnalysis: async () => { called = true; return Response.json(proposal) } })
   expect((await analyze(body)).body).toBe(body)
   expect(called).toBe(false)
+})
+
+test('client cancellation aborts analysis and does not call task provider', async () => {
+  let upstreamCalls = 0
+  let analysisSignal: AbortSignal | null = null
+  const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => { upstreamCalls++; return Response.json({ id: 'unexpected' }) } })
+  const analyze = createCodexAnalysis({ mode: 'apply', model: 'analysis-model', upstreamBaseUrl: 'https://analysis.example/v1', contextForPrompt: async () => '',
+    fetchAnalysis: async (_url: URL, init: RequestInit) => { analysisSignal = init.signal as AbortSignal; return new Promise((_resolve, reject) => analysisSignal!.addEventListener('abort', () => reject(new Error('aborted')), { once: true })) },
+  })
+  const proxy = createProxyServer({ port: 0, upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, analyzeCodexRequest: analyze })
+  try {
+    const controller = new AbortController()
+    const pending = fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, { method: 'POST', body: raw, signal: controller.signal })
+    for (let attempt = 0; attempt < 100 && !analysisSignal; attempt++) await Bun.sleep(10)
+    expect(analysisSignal).not.toBeNull()
+    controller.abort()
+    await expect(pending).rejects.toThrow()
+    for (let attempt = 0; attempt < 100 && !analysisSignal!.aborted; attempt++) await Bun.sleep(10)
+    expect(analysisSignal!.aborted).toBe(true)
+    expect(upstreamCalls).toBe(0)
+  } finally { proxy.stop(true); upstream.stop(true) }
+})
+
+test('analysis upstream cannot loop back into the same proxy port', () => {
+  expect(() => createCodexAnalysis({ mode: 'apply', model: 'm', proxyPort: 4178, upstreamBaseUrl: 'http://localhost:4178/v1' })).toThrow('cannot point back')
 })

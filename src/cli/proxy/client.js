@@ -110,7 +110,7 @@ export async function runProxyCommand(args) {
     const { upstream, apiKeyEnv, keyless } = route(args)
     const analysis = loadAnalysisProfile()
     if (analysis.apiKeyEnv && !process.env[analysis.apiKeyEnv]) throw new Error(`Set ${analysis.apiKeyEnv} before starting the proxy`)
-    const analyzeCodexRequest = analysis.mode === 'off' ? undefined : createCodexAnalysis({ ...analysis, apiKey: analysis.apiKeyEnv ? process.env[analysis.apiKeyEnv] : undefined,
+    const analyzeCodexRequest = analysis.mode === 'off' ? undefined : createCodexAnalysis({ ...analysis, proxyPort: port, apiKey: analysis.apiKeyEnv ? process.env[analysis.apiKeyEnv] : undefined,
       onDecision: (decision) => {
         const path = join(root(), 'proxy-analysis-last.json')
         const temp = `${path}.${process.pid}.tmp`

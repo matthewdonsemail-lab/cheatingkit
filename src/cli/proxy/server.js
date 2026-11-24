@@ -30,7 +30,8 @@ export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, fetchU
           headers.delete('authorization')
           if (apiKey) headers.set('authorization', `Bearer ${apiKey}`)
         }
-        const body = analyzeCodexRequest ? (await analyzeCodexRequest(await request.text())).body : request.body
+        const body = analyzeCodexRequest ? (await analyzeCodexRequest(await request.text(), { signal: request.signal })).body : request.body
+        if (request.signal.aborted) return new Response('Client disconnected', { status: 499 })
         const response = await fetchUpstream(target, {
           method: 'POST', headers, body,
           signal: request.signal, duplex: 'half', redirect: 'manual',
