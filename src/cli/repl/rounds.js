@@ -7,7 +7,7 @@ import { chargeCapability } from './capabilities.js'
 // once, so concurrent attempts cannot collide on it. N parallel attempts run against
 // the shared durable state, the auditor judges them together, and only clean evidence
 // moves the record. Retrying and parallelism are the same operation at different N.
-export async function runRound({ db, env, replId, goal, onHostRequest, copies = 3 }) {
+export async function runRound({ db, env, replId, goal, onHostRequest, copies = 3, scope = {} }) {
   const decision = decide(db, replId)
   if (decision.control !== 'execute') return { ...decision, round: null }
 
@@ -33,11 +33,10 @@ export async function runRound({ db, env, replId, goal, onHostRequest, copies = 
   const codeFor = (index) => [
     `console.log(${JSON.stringify(prompt)})`,
     `const seed = ${JSON.stringify(seeds[index] || goal)}`,
-    // The attempt pulls its own evidence with its own seed, so the local CPU retrieval
-    // is an explicit step the audit can see rather than a hidden side effect.
-    `const pack = await __host.request('context.pack', { prompt: seed, maxChars: 4500 })`,
-    `const result = await __host.request('attempt.rewrite', { goal: ${JSON.stringify(goal)}, seed, evidence: pack.text, subtask: ${JSON.stringify(bounded.subtask)} })`,
-    `await __host.request('attempt.write', { dir: attemptDir, name: 'rewrite.json', body: JSON.stringify({ ...result, seed }) })`,
+    // Evidence is keyed on the prompt; the seed only widens it.
+    `const pack = await __host.request('context.evidence', { prompt: ${JSON.stringify(goal)}, seed, scope: ${JSON.stringify(scope)} })`,
+    `const result = await __host.request('attempt.rewrite', { goal: ${JSON.stringify(goal)}, seed, evidence: pack.text, sources: pack.sourceIds, subtask: ${JSON.stringify(bounded.subtask)} })`,
+    `await __host.request('attempt.write', { dir: attemptDir, name: 'rewrite.json', body: JSON.stringify({ ...result, seed, sources: pack.sourceIds }) })`,
     `result.status`,
   ].join('\n')
   const parentCapability = env.capabilityToken()

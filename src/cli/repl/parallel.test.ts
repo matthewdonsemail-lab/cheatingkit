@@ -16,6 +16,7 @@ test('the CLI handler set can complete a round', async () => {
   const { createEnvironment } = await import('./environment.js')
   const handlers = {
     'context.pack': async () => ({ text: 'evidence' }),
+    'context.evidence': async () => ({ text: 'evidence', sourceIds: [] }),
     'attempt.seeds': async (data) => ({ seeds: Array.from({ length: data.count || 3 }, (_, i) => 'seed' + i) }),
     'attempt.rewrite': async () => ({ status: 'proposed', proposedText: 'rewritten', reason: 'ok' }),
     'attempt.write': async ({ dir, name, body }) => { const { writeFileSync, mkdirSync } = await import('node:fs'); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, name), body); return { path: join(dir, name) } },
@@ -42,6 +43,7 @@ test('attempts each get their own directory', async () => {
   const seen = []
   const handlers = {
     'context.pack': async () => ({ text: 'evidence' }),
+    'context.evidence': async () => ({ text: 'evidence', sourceIds: [] }),
     'attempt.seeds': async (data) => ({ seeds: Array.from({ length: data.count || 3 }, (_, i) => 'seed' + i) }),
     'attempt.rewrite': async () => ({ status: 'proposed', proposedText: 'rewritten', reason: 'ok' }),
     'attempt.write': async ({ dir, name, body }) => { seen.push(dir); const { writeFileSync, mkdirSync } = await import('node:fs'); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, name), body); return { path: join(dir, name) } },

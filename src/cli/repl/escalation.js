@@ -16,7 +16,7 @@ export function createEscalation({ mode = 'enforce', maxRounds = 3, copies = 3, 
 
   // Every prompt enters the environment. The rounds produce candidates; the caller
   // decides whether to use the winner. `judge` is the entry point, not a fault path.
-  async function judge({ goal, harness, sessionId, required = [], artifact = null, evidence = [], maxRounds: rounds = maxRounds }) {
+  async function judge({ goal, harness, sessionId, cwd = null, required = [], artifact = null, evidence = [], maxRounds: rounds = maxRounds }) {
     const record = { mode, goal, rounds: [], control: null, replId: null, reason: null }
     if (mode === 'off' || !goal) return record
     const db = openDatabase(dbPath || attemptDatabasePath())
@@ -33,7 +33,7 @@ export function createEscalation({ mode = 'enforce', maxRounds = 3, copies = 3, 
         const target = unresolved(env)[0]
         if (target) setArtifactPath(db, target.id, artifact || env.directory)
         const outcome = await runRound({
-          db, env, replId, goal, copies,
+          db, env, replId, goal, copies, scope: { cwd, sessionId },
           onHostRequest: (data, context) => harnessHandler[data.type](data, context),
         })
         record.rounds.push({ round: outcome.round, control: outcome.control, verdict: outcome.verdict, recordId: outcome.recordId })

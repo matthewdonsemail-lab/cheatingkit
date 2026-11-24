@@ -19,6 +19,7 @@ import { createHermesAnalysis } from './hermesAnalysis.js'
 import { attemptDatabasePath, openAttemptStore } from './attempts.js'
 import { buildContextPack } from '../context/client.js'
 import { attemptHandlers } from '../repl/attemptHandlers.js'
+import { buildEvidence } from '../repl/evidenceBuild.js'
 import { inspectAttempts } from './attemptsCli.js'
 import { openDatabase } from '../storage/client.js'
 import { runHarness } from './runner.js'
@@ -253,6 +254,10 @@ export async function runProxyCommand(args) {
       harnessHandler: {
         ...attemptHandlers({
           embed: (texts) => import('../search/client.js').then(({ localEmbed }) => localEmbed(texts)),
+          evidenceBuild: (data) => {
+            const db = openDatabase(attemptDatabasePath())
+            try { return buildEvidence(db, { ...data, scope: { sessionId: tracedSession } }) } finally { db.close() }
+          },
           context: async (prompt, maxChars) => {
             const db = openDatabase(attemptDatabasePath())
             try { return await buildContextPack(db, prompt, { maxChars: maxChars || 4500 }) } finally { db.close() }

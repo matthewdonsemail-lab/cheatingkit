@@ -30,6 +30,7 @@ test('a blocked turn escalates and the environment completes the goal', async ()
     harnessHandler: {
       'gate.evaluate': async () => ({ decision: 'allow', reason: 'contract is in scope', evidence: [] }),
       'context.pack': async () => ({ text: 'evidence' }),
+    'context.evidence': async () => ({ text: 'evidence', sourceIds: [] }),
     'attempt.seeds': async (data) => ({ seeds: Array.from({ length: data.count || 3 }, (_, i) => 'seed' + i) }),
     'attempt.rewrite': async () => ({ status: 'proposed', proposedText: 'rewritten prompt', reason: 'ok' }),
       'attempt.write': async ({ dir, name, body }) => { const { writeFileSync, mkdirSync } = await import('node:fs'); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, name), body); return { path: join(dir, name) } },

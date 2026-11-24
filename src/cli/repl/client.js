@@ -7,6 +7,7 @@ import { createMessageGate } from '../proxy/gate.js'
 import { createEnvironment, loadSession, readSnapshotManifest, removeRepl } from './environment.js'
 import { capabilityFrame } from './capabilities.js'
 import { attemptHandlers } from './attemptHandlers.js'
+import { buildEvidence } from './evidenceBuild.js'
 import { loadDirectKey } from '../proxy/secretStore.js'
 import { loadAnalysisProfile } from '../proxy/analysisProfile.js'
 
@@ -31,6 +32,7 @@ function handlers(config, database) {
   return {
     ...attemptHandlers({
       context: (prompt, maxChars) => buildContextPack(database, prompt, { maxChars: maxChars || 4500 }),
+      evidenceBuild: (data) => buildEvidence(database, data),
       embed: (texts) => localEmbed(texts),
       seeds: analysis.mode === 'off' ? null : async ({ goal, count }) => {
         const { rewriteOnce } = await import('../proxy/analysis.js')

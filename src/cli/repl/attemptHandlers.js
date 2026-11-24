@@ -4,7 +4,7 @@ import { diverseSeeds } from './seeds.js'
 
 // Host handlers an attempt and its auditor need. Shared by the CLI and the proxy so
 // there is one behaviour, not two.
-export function attemptHandlers({ rewrite, context, seeds, embed, prefer }) {
+export function attemptHandlers({ rewrite, context, seeds, embed, prefer, evidenceBuild }) {
   return {
     // One shared call produces the candidate first queries; the manager reduces them.
     'attempt.seeds': async ({ goal, count }) => {
@@ -33,5 +33,9 @@ export function attemptHandlers({ rewrite, context, seeds, embed, prefer }) {
       try { return { entries: readdirSync(path) } } catch { return { entries: [] } }
     },
     'context.pack': async ({ prompt, maxChars }) => ({ text: context ? await context(prompt, maxChars) : '' }),
+    // Prompt-keyed evidence with warnings resolved and shaped locally.
+    'context.evidence': async ({ prompt, seed, scope }) => (evidenceBuild
+      ? evidenceBuild({ prompt, seeds: seed ? [seed] : [], scope: scope || {} })
+      : { text: '', sourceIds: [] }),
   }
 }

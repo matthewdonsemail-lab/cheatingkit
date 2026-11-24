@@ -215,6 +215,14 @@ function explicitId(request, name) {
 
 // Keeps request and response ownership in the protocol relay. Enforcement
 // fails closed when the gate audit cannot be saved; IDs stay local to the DB.
+// The request carries a working directory in its metadata; evidence is scoped to it.
+function requestContextOf(rawBody) {
+  try {
+    const parsed = JSON.parse(rawBody)
+    return parsed?.client_metadata?.cwd || parsed?.metadata?.cwd || null
+  } catch { return null }
+}
+
 export async function trackProxyRequest(request, { store, harness, protocol, provider, analyze, relay, gate, escalate }) {
   let requestId
   let auditError = null
@@ -250,7 +258,7 @@ export async function trackProxyRequest(request, { store, harness, protocol, pro
           if (escalate) {
             window = await escalate({
               goal: selected.originalText,
-              harness, sessionId: tracedSession,
+              harness, sessionId: tracedSession, cwd: requestContextOf(rawBody),
               maxRounds: 2,
             }).catch((error) => ({ control: 'blocked', error: error.message, rounds: [] }))
           }
@@ -305,7 +313,7 @@ export async function trackProxyRequest(request, { store, harness, protocol, pro
           if (escalate && result.record.decision === 'block' && !result.record.window) {
             result.record.window = await escalate({
               goal: result.record.originalText || result.record.proposedText,
-              harness, sessionId: tracedSession,
+              harness, sessionId: tracedSession, cwd: result.record.context?.cwd,
               evidence: result.record.sourceIds,
             }).catch((error) => ({ control: 'blocked', error: error.message, rounds: [] }))
           }
