@@ -151,3 +151,11 @@ test('rewrite receives developer hook context and exposes the exact shared evide
   expect(result.decision.context.cwd).toBe('C:\\project')
   expect(result.decision.context.evidence).toContain('feature branch')
 })
+
+
+test('an unchanged successful proposal remains eligible for independent validation', async () => {
+  const analyze = createCodexAnalysis({ mode: 'apply', model: 'analysis', upstreamBaseUrl: 'https://analysis.example/v1', contextForPrompt: async () => '', fetchAnalysis: async () => Response.json({ output_text: 'Latest task' }) })
+  const result = await analyze(raw)
+  expect(result.body).toBe(raw)
+  expect(result.decision).toMatchObject({ proposedText: 'Latest task', applied: false, reason: 'wording already clear; proposal unchanged' })
+})

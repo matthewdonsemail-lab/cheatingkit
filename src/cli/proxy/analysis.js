@@ -107,10 +107,10 @@ export function createCodexAnalysis({ mode = 'off', protocol = 'responses', mode
       if (!analysisResponse.ok) throw new Error(`analysis model returned HTTP ${analysisResponse.status}`)
       const responseBody = await analysisResponse.json()
       const proposed = (protocol === 'responses' ? outputText(responseBody) : chatOutputText(responseBody)).trim()
-      if (!proposed || proposed.length > 12_000 || proposed === selected.text) throw new Error('no usable distinct proposal')
+      if (!proposed || proposed.length > 12_000) throw new Error('no usable proposal')
       decision.proposedText = proposed
-      decision.reason = mode === 'apply' ? 'proposal applied' : 'proposal recorded'
-      if (mode === 'apply') {
+      decision.reason = proposed === selected.text ? 'wording already clear; proposal unchanged' : mode === 'apply' ? 'proposal applied' : 'proposal recorded'
+      if (mode === 'apply' && proposed !== selected.text) {
         selected.replace(parsed, proposed)
         decision.applied = true
         return { body: JSON.stringify(parsed), decision }
