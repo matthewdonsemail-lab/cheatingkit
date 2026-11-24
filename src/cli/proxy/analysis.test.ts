@@ -4,6 +4,7 @@ import { createProxyServer } from './server.js'
 
 const input = { model: 'task-model', input: [
   { role: 'user', content: 'Earlier task' },
+  { role: 'assistant', content: 'Earlier answer' },
   { type: 'function_call_output', call_id: 'call_1', output: 'tool data' },
   { role: 'user', content: [{ type: 'input_text', text: 'Latest task' }] },
 ], tools: [{ type: 'function', name: 'read_file' }], stream: true, previous_response_id: 'resp_previous' }
@@ -23,6 +24,9 @@ test('suggest mode sends corpus evidence to separate analysis model and forwards
   expect(seen.auth).toBe('Bearer analysis-secret')
   expect(seen.body.model).toBe('analysis-model')
   expect(seen.body.input).toContain('Source [claudeCode/session#message]')
+  expect(seen.body.input).toContain('user: Earlier task')
+  expect(seen.body.input).toContain('assistant: Earlier answer')
+  expect(seen.body.input).not.toContain('tool data')
 })
 
 test('apply mode changes only the latest plain user text and relays task provider SSE', async () => {
@@ -39,7 +43,7 @@ test('apply mode changes only the latest plain user text and relays task provide
     expect(await response.text()).toContain('response.completed')
     expect(received.auth).toBe('Bearer task-secret')
     const expected = structuredClone(input)
-    expected.input[2].content[0].text = 'Clearer latest task'
+    expected.input[3].content[0].text = 'Clearer latest task'
     expect(received.body).toEqual(expected)
   } finally { proxy.stop(true); upstream.stop(true) }
 })

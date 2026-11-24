@@ -16,7 +16,7 @@ export function validateUpstream(raw) {
   return url
 }
 
-export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, anthropicUpstreamBaseUrl, anthropicApiKey, fetchUpstream = fetch, analyzeCodexRequest } = {}) {
+export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, anthropicUpstreamBaseUrl, anthropicApiKey, fetchUpstream = fetch, analyzeCodexRequest, analyzeClaudeMessagesRequest } = {}) {
   if (!upstreamBaseUrl && !anthropicUpstreamBaseUrl) throw new Error('Configure at least one proxy upstream')
   const upstream = upstreamBaseUrl ? validateUpstream(upstreamBaseUrl) : null
   const anthropicUpstream = anthropicUpstreamBaseUrl ? validateUpstream(anthropicUpstreamBaseUrl) : null
@@ -28,7 +28,7 @@ export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, anthro
     async fetch(request) {
       const path = new URL(request.url).pathname
       if (path === '/health' && request.method === 'GET') return Response.json({ service: 'cheatingkit-proxy', pid: process.pid, port: server.port })
-      if (anthropicUpstream && anthropicPath(path)) return relayAnthropicRequest(request, { upstreamBaseUrl: anthropicUpstream.href, apiKey: anthropicApiKey, fetchUpstream })
+      if (anthropicUpstream && anthropicPath(path)) return relayAnthropicRequest(request, { upstreamBaseUrl: anthropicUpstream.href, apiKey: anthropicApiKey, fetchUpstream, analyzeMessagesRequest: analyzeClaudeMessagesRequest })
       if (!upstream || path !== '/v1/responses' || request.method !== 'POST') return new Response('Not found', { status: 404 })
       const target = new URL('responses', `${upstream.href}/`)
       try {

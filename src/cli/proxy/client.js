@@ -11,6 +11,7 @@ import { installedVersion } from '../updates/client.js'
 import { loadProfile, saveProfile } from './provider.js'
 import { loadAnalysisProfile, saveAnalysisProfile } from './analysisProfile.js'
 import { createCodexAnalysis } from './analysis.js'
+import { createClaudeMessagesAnalysis } from './claudeAnalysis.js'
 import * as clack from '@clack/prompts'
 
 const root = () => process.env.CHEATINGKIT_HOME || join(homedir(), '.cheatingkit')
@@ -127,16 +128,17 @@ export async function runProxyCommand(args) {
   if (action === 'serve') {
     const { responses, anthropic } = routes(args)
     const analysis = loadAnalysisProfile()
-    if (responses && analysis.apiKeyEnv && !process.env[analysis.apiKeyEnv]) throw new Error(`Set ${analysis.apiKeyEnv} before starting the proxy`)
-    const analyzeCodexRequest = !responses || analysis.mode === 'off' ? undefined : createCodexAnalysis({ ...analysis, proxyPort: port, apiKey: analysis.apiKeyEnv ? process.env[analysis.apiKeyEnv] : undefined,
-      onDecision: (decision) => {
+    if (analysis.mode !== 'off' && analysis.apiKeyEnv && !process.env[analysis.apiKeyEnv]) throw new Error(`Set ${analysis.apiKeyEnv} before starting the proxy`)
+    const auditDecision = (protocol) => (decision) => {
         const path = join(root(), 'proxy-analysis-last.json')
         const temp = `${path}.${process.pid}.tmp`
-        writeFileSync(temp, JSON.stringify({ at: new Date().toISOString(), ...decision }) + '\n', { mode: 0o600 })
+        writeFileSync(temp, JSON.stringify({ at: new Date().toISOString(), protocol, ...decision }) + '\n', { mode: 0o600 })
         renameSync(temp, path)
-      },
-    })
-    const server = createProxyServer({ port, upstreamBaseUrl: responses?.upstream, apiKey: responses?.apiKeyEnv ? process.env[responses.apiKeyEnv] : responses?.keyless ? '' : undefined, anthropicUpstreamBaseUrl: anthropic?.upstreamBaseUrl, anthropicApiKey: anthropic ? process.env[anthropic.apiKeyEnv] : undefined, analyzeCodexRequest })
+    }
+    const analysisOptions = { ...analysis, proxyPort: port, apiKey: analysis.apiKeyEnv ? process.env[analysis.apiKeyEnv] : undefined }
+    const analyzeCodexRequest = responses && analysis.mode !== 'off' ? createCodexAnalysis({ ...analysisOptions, onDecision: auditDecision('codex') }) : undefined
+    const analyzeClaudeMessagesRequest = anthropic && analysis.mode !== 'off' ? createClaudeMessagesAnalysis({ ...analysisOptions, onDecision: auditDecision('claude') }) : undefined
+    const server = createProxyServer({ port, upstreamBaseUrl: responses?.upstream, apiKey: responses?.apiKeyEnv ? process.env[responses.apiKeyEnv] : responses?.keyless ? '' : undefined, anthropicUpstreamBaseUrl: anthropic?.upstreamBaseUrl, anthropicApiKey: anthropic ? process.env[anthropic.apiKeyEnv] : undefined, analyzeCodexRequest, analyzeClaudeMessagesRequest })
     writeState({ pid: process.pid, port: server.port, startedAt: new Date().toISOString(), version: installedVersion().version, upstreamBaseUrl: responses?.upstream || null, apiKeyEnv: responses?.apiKeyEnv || null, anthropicUpstreamBaseUrl: anthropic?.upstreamBaseUrl || null, anthropicApiKeyEnv: anthropic?.apiKeyEnv || null })
     console.log(`CheatingKit proxy listening on http://127.0.0.1:${server.port}/v1`)
     const close = () => { server.stop(true); if (readState()?.pid === process.pid) rmSync(statePath(), { force: true }); process.exit(0) }
