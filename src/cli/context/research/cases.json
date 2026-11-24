@@ -44,7 +44,7 @@
       "provenance": {
         "kind": "locally_authored",
         "dataset": "CheatingKit context regressions",
-        "version": "1",
+        "version": "2",
         "originalCaseId": "correction"
       },
       "group": "correction",
@@ -79,14 +79,17 @@
         "goal": "Inspect the loader startup",
         "action": "inspect",
         "constraints": [
-          "do not edit"
+          "do not edit",
+          "maintain startup scope"
         ],
         "requiredSourceIds": [
           "codex/history#1",
+          "codex/history#2",
           "codex/history#3"
         ],
         "relevantSourceIds": [
           "codex/history#1",
+          "codex/history#2",
           "codex/history#3"
         ],
         "expectedGate": "allow",

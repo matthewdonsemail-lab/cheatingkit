@@ -80,7 +80,14 @@ test('gate evaluator errors remain unscored rather than semantic blocks',async()
 
 test('retrieval metrics remain observable when the independent interpreter fails',async()=>{
   const report=await evaluateManifest(manifest,{mode:'live',caseId:'correction',embed:async texts=>texts.map(()=>Float32Array.from([1,0])),judge:{metadata:{kind:'test_adapter'},interpret:async()=>{throw new Error('judge unavailable')}}})
-  expect(report.aggregate.retrieval.requiredSpanRecall).toMatchObject({numerator:2,denominator:2})
+  expect(report.aggregate.retrieval.requiredSpanRecall).toMatchObject({numerator:3,denominator:3})
   expect(report.aggregate.retrieval.actionAccuracy.denominator).toBe(0)
   expect(report.aggregate.retrieval.evaluationErrors.numerator).toBe(1)
+})
+
+
+test('clarification on an annotated allow case is counted separately as a classification mismatch',async()=>{
+  const report=await evaluateManifest(manifest,{mode:'live',caseId:'no-edit',embed:async texts=>texts.map(()=>Float32Array.from([1,0])),judge:{metadata:{kind:'test_adapter'},interpret:async()=>({goal:'Inspect loader',action:'inspect',constraints:['do not edit'],citations:[],decision:'allow',uncertainty:false}),adjudicate:async()=>({goalCorrect:true,constraintsCorrect:true,reason:'test'}),evaluate:async()=>({decision:'needs_clarification',reason:'test clarification'})}})
+  expect(report.aggregate.retrieval.gateDecisionAccuracy).toMatchObject({numerator:0,denominator:1})
+  expect(report.aggregate.retrieval.clarifications).toMatchObject({numerator:1,denominator:1})
 })
