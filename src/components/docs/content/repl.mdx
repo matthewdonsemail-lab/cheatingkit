@@ -22,6 +22,19 @@ ck repl exec --id <replId> --code "hits.length"
 
 Each call is its own process. The environment is restored from its snapshot before the cell runs and saved after, so values persist between calls without a resident process.
 
+## Rounds
+
+A round is a Manage-Execute-Audit cycle. The manager holds the task state and picks one subtask. An executor episode does only that subtask. A separate read-only auditor kernel inspects the environment and returns a verdict.
+
+An executor claim never changes state. A record reaches `completed` only on a clean audit result, and the control stays `execute` until it does. Control is `execute`, `done`, `blocked` or `ask`.
+
+```sh
+ck repl round --id <replId> --require "create out.txt" --artifact out.txt
+ck repl round --id <replId> --require "..." --artifact out.txt --limit 5
+```
+
+Each `--require` records one requirement. `--artifact` names the file the auditor checks for the round's record. Every round writes a report under the environment's `audit/` directory.
+
 ## Ask the gate
 
 ```sh
