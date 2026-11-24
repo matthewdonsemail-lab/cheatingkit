@@ -18,10 +18,29 @@ export async function buildEvidence(db, { prompt, seeds = [], maxChars = 4500, s
 
   const merged = new Map()
   for (const hit of [...promptHits, ...breadth]) {
-    const key = `${hit.harness}/${hit.sessionId}`
+    const key = `${hit.harness}/${hit.sessionId}/${hit.messageIds?.[0] || ''}`
     const existing = merged.get(key)
     if (!existing || hit.score > existing.score) merged.set(key, hit)
   }
+  // Warnings are rare and are the point: widen toward their sessions directly so a
+  // query is never only served by similar prose that happens to carry no warning.
+  const warningSessions = db.prepare("SELECT DISTINCT t.harness, t.sessionId, count(*) AS warnings FROM timeline t WHERE t.kind='cyberWarning' GROUP BY t.harness, t.sessionId ORDER BY warnings DESC").all()
+  const warned = []
+  for (const session of warningSessions) {
+    if (merged.has(`${session.harness}/${session.sessionId}`)) continue
+    const rows = db.prepare(`SELECT c.harness, c.sessionId, c.messageIds, s.cwd FROM searchChunks c JOIN sessions s ON s.harness=c.harness AND s.sessionId=c.sessionId
+      WHERE c.harness=? AND c.sessionId=? AND (? IS NULL OR rtrim(replace(s.cwd,char(92),'/'),'/') = rtrim(replace(?,char(92),'/'),'/') COLLATE NOCASE)
+      ORDER BY c.chunkStart LIMIT 2`).all(session.harness, session.sessionId, scoped.cwd, scoped.cwd)
+    for (const row of rows) {
+      const start = db.prepare('SELECT MIN(sourcePosition) AS position FROM messages WHERE harness=? AND sessionId=? AND sourceId=?').get(row.harness, row.sessionId, JSON.parse(row.messageIds)[0])
+      warned.push({ harness: row.harness, sessionId: row.sessionId, cwd: row.cwd, messageIds: JSON.parse(row.messageIds), position: start?.position ?? 0, score: 0.014, pass: 'warning' })
+    }
+  }
+  for (const hit of warned) {
+    const key = `${hit.harness}/${hit.sessionId}/${hit.messageIds?.[0]}`
+    if (!merged.has(key)) merged.set(key, hit)
+  }
+
   const hits = [...merged.values()]
 
   // Warnings for every touched session, resolved once.
@@ -38,7 +57,8 @@ export async function buildEvidence(db, { prompt, seeds = [], maxChars = 4500, s
 
   const ordered = orderHits(hits.map((hit) => {
     const anchor = db.prepare('SELECT MIN(sourcePosition) AS position FROM messages WHERE harness=? AND sessionId=? AND sourceId=?').get(hit.harness, hit.sessionId, hit.messageIds?.[0])
-    return { ...hit, sessionId: hit.sessionId, position: anchor?.position ?? 0 }
+    const position = hit.position ?? anchor?.position ?? Number.MAX_SAFE_INTEGER
+    return { ...hit, position, warning: Boolean(warningOf(warnings, { sessionId: hit.sessionId, position })) }
   }))
 
   const lines = []

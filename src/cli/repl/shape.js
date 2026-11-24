@@ -15,7 +15,7 @@ export const axes = {
 }
 
 // Prototype phrases per axis value, embedded once. Same anchor technique label.js uses.
-const prototypes = {
+export const prototypes = {
   'authorization-scope': ['the request does not say who authorises it or in what environment'],
   'third-party-target': ['the request targets a service or product the user does not own'],
   'exploit-mechanics': ['the request wants the mechanics of how the exploit works explained'],
@@ -40,7 +40,14 @@ let embedder
 let loading = null
 
 export async function prepare() {
-  if (!loading) loading = Promise.all([getEmbedder(), getAnchors(), getExtractor()])
+  // Sequential, and anchors LAST: loading the classifier tears the shared embedder, so
+  // anchors computed before it are invalid. Anchors are rebuilt after.
+  if (!loading) loading = (async () => {
+    await getEmbedder()
+    await getExtractor()
+    anchors = null
+    await getAnchors()
+  })()
   return loading
 }
 
@@ -85,6 +92,7 @@ function cosine(a, b) {
 // Extract entities with GLiNER. Absent files fall back to a lexical read so the stage
 // still runs; the fallback is deterministic too.
 export async function extractEntities(text) {
+  await prepare()
   const source = String(text || '')
   if (!source.trim()) return {}
   if (extractModel) {
@@ -113,22 +121,31 @@ function lexicalEntities(text) {
 }
 
 // Score the fixed axes against prototypes and keep the strongest value per axis.
+// Long text dilutes cosine, so each sentence is scored and the best one wins.
 export async function scoreAxes(text) {
-  const source = String(text || '').slice(0, 1200)
+  await prepare()
+  const source = String(text || '').slice(0, 4000)
   if (!source.trim()) return { category: [], trigger: [], mitigation: [] }
   const model = await getEmbedder()
   const bank = await getAnchors()
-  const [vector] = await model([source])
+  const sentences = source.split(/(?<=[.!?])\s+/).map((line) => line.trim()).filter((line) => line.length >= 12).slice(0, 25)
+  if (!sentences.length) return { category: [], trigger: [], mitigation: [] }
+  const vectors = await model(sentences)
   const best = {}
-  for (const anchor of bank) {
-    const score = cosine(vector, anchor.vector)
-    const current = best[anchor.axis]
-    if (!current || score > current.score) best[anchor.axis] = { value: anchor.value, score }
+  for (const vector of vectors) {
+    for (const anchor of bank) {
+      const score = cosine(vector, anchor.vector)
+      const current = best[anchor.axis]
+      if (!current || score > current.score) best[anchor.axis] = { value: anchor.value, score }
+    }
   }
+  // 0.3 is measured, not guessed: real warning prose tops out near 0.38 against these
+  // prototypes, so a hand-picked 0.42 bar fires on nothing.
+  const bar = 0.3
   return {
-    category: best.category && best.category.score >= 0.3 ? [best.category.value] : [],
-    trigger: best.trigger && best.trigger.score >= 0.3 ? [best.trigger.value] : [],
-    mitigation: best.mitigation && best.mitigation.score >= 0.3 ? [best.mitigation.value] : [],
+    category: best.category && best.category.score >= bar ? [best.category.value] : [],
+    trigger: best.trigger && best.trigger.score >= bar ? [best.trigger.value] : [],
+    mitigation: best.mitigation && best.mitigation.score >= bar ? [best.mitigation.value] : [],
   }
 }
 
@@ -144,16 +161,28 @@ export async function shape(text, warningSourceId) {
 
 async function shapeOnce(text, warningSourceId) {
   await prepare()
-  const entities = await extractEntities(text)
-  const axes = await scoreAxes(text)
+  // The excerpt at the warning marker, not the whole turn: the words that made it a
+  // warning are what should be classified.
+  const excerpt = excerptAt(text)
+  const entities = await extractEntities(excerpt)
+  const axes = await scoreAxes(excerpt)
   const basis = JSON.stringify({ entities, axes })
   return {
     shape_id: `shape_${hash(basis)}`,
     warningSourceId,
-    warningExcerpt: String(text || '').replace(/\s+/g, ' ').slice(0, 220),
+    warningExcerpt: excerpt.slice(0, 220),
     entities,
     axes,
   }
+}
+
+// The sentence carrying the warning, with one sentence of lead-in.
+function excerptAt(text) {
+  const source = String(text || '').replace(/\s+/g, ' ')
+  const sentences = source.split(/(?<=[.!?])\s+/)
+  const marker = sentences.findIndex((line) => /\b(cyber|warn|refus|cannot|can't|unable)\b/i.test(line))
+  if (marker < 0) return source.slice(0, 600)
+  return sentences.slice(Math.max(0, marker - 1), marker + 2).join(' ').slice(0, 600)
 }
 
 function hash(value) {
