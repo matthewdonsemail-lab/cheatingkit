@@ -55,7 +55,7 @@ export function createGateEvaluator({ model, upstreamBaseUrl, protocol = 'respon
   }
 }
 
-function replaceText(rawBody, protocol, text) {
+export function replaceText(rawBody, protocol, text) {
   const body = JSON.parse(rawBody)
   if (protocol === 'responses' && typeof body.input === 'string') body.input = text
   else {

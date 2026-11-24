@@ -14,7 +14,9 @@ export const escalateModes = ['off', 'observe', 'enforce']
 export function createEscalation({ mode = 'enforce', maxRounds = 3, copies = 3, harnessHandler, dbPath } = {}) {
   if (!escalateModes.includes(mode)) throw new Error('Escalation mode must be off, observe, or enforce')
 
-  return async function escalate({ goal, harness, sessionId, required = [], artifact = null, evidence = [] }) {
+  // Every prompt enters the environment. The rounds produce candidates; the caller
+  // decides whether to use the winner. `judge` is the entry point, not a fault path.
+  async function judge({ goal, harness, sessionId, required = [], artifact = null, evidence = [], maxRounds: rounds = maxRounds }) {
     const record = { mode, goal, rounds: [], control: null, replId: null, reason: null }
     if (mode === 'off' || !goal) return record
     const db = openDatabase(dbPath || attemptDatabasePath())
@@ -26,9 +28,7 @@ export function createEscalation({ mode = 'enforce', maxRounds = 3, copies = 3, 
       if (required.length) openState(db, env, { requirements: required })
       else openState(db, env, { requirements: [goal] })
       record.replId = replId
-      for (let index = 0; index < maxRounds; index++) {
-        // The artifact is attached to the record the round is about to work. With no
-        // known output file the auditor watches the environment directory itself.
+      for (let index = 0; index < rounds; index++) {
         const { unresolved, setArtifactPath } = await import('./mea.js')
         const target = unresolved(env)[0]
         if (target) setArtifactPath(db, target.id, artifact || env.directory)
@@ -37,12 +37,17 @@ export function createEscalation({ mode = 'enforce', maxRounds = 3, copies = 3, 
           onHostRequest: (data, context) => harnessHandler[data.type](data, context),
         })
         record.rounds.push({ round: outcome.round, control: outcome.control, verdict: outcome.verdict, recordId: outcome.recordId })
+        if (outcome.winner) record.winner = outcome.winner
         if (outcome.control !== 'execute') break
+        // A clean verdict completes the record, so stop rather than burn another round.
+        if (decide(db, replId).control !== 'execute') break
       }
       const final = decide(db, replId)
       record.control = final.control
       record.reason = final.reason
       record.completed = final.control === 'done'
+      const { heartbeatNotice } = await import('./heartbeat.js')
+      record.notice = heartbeatNotice(db, replId)
     } catch (error) {
       record.error = error.message
       record.control = 'blocked'
@@ -52,6 +57,8 @@ export function createEscalation({ mode = 'enforce', maxRounds = 3, copies = 3, 
     }
     return record
   }
+
+  return judge
 }
 
 export function escalationDirectory(replId) {

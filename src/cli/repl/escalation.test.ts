@@ -29,7 +29,8 @@ test('a blocked turn escalates and the environment completes the goal', async ()
     mode: 'enforce',
     harnessHandler: {
       'gate.evaluate': async () => ({ decision: 'allow', reason: 'contract is in scope', evidence: [] }),
-      'attempt.rewrite': async () => ({ status: 'proposed', proposedText: 'rewritten prompt', reason: 'ok' }),
+      'attempt.seeds': async (data) => ({ seeds: Array.from({ length: data.count || 3 }, (_, i) => 'seed' + i) }),
+    'attempt.rewrite': async () => ({ status: 'proposed', proposedText: 'rewritten prompt', reason: 'ok' }),
       'attempt.write': async ({ dir, name, body }) => { const { writeFileSync, mkdirSync } = await import('node:fs'); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, name), body); return { path: join(dir, name) } },
       'audit.read': async ({ path: p }) => { const { existsSync, readFileSync } = await import('node:fs'); return existsSync(p) ? { exists: true, body: readFileSync(p, 'utf8') } : { exists: false } },
     },
@@ -47,11 +48,15 @@ test('a blocked turn escalates and the environment completes the goal', async ()
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ model: 'task', input: 'implement the refused thing' }),
     })
-    const body = await response.json()
-    expect(body.error.decision).toBe('escalated')
-    expect(body.escalation.completed).toBe(true)
+    // A winning candidate is forwarded, so the harness gets a normal answer and the
+    // turn continues instead of ending on a gate error.
+    const dbg = await response.clone().text(); (await import('node:fs')).writeFileSync('dbg.json', dbg)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('x-cheatingkit-escalated')).toBeTruthy()
     const attempt = store.get(response.headers.get('x-cheatingkit-request-id'))
+    expect(attempt.gateDecision.decision).toBe('allow')
     expect(attempt.gateDecision.escalation.replId).toBeTruthy()
+    expect(attempt.gateDecision.terminationReason).toContain('escalated')
   } finally { proxy.stop(true); store.close(); db.close(); clean(home) }
 })
 

@@ -1,14 +1,21 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { diverseSeeds } from './seeds.js'
 
 // Host handlers an attempt and its auditor need. Shared by the CLI and the proxy so
 // there is one behaviour, not two.
-export function attemptHandlers({ rewrite, context }) {
+export function attemptHandlers({ rewrite, context, seeds, embed }) {
   return {
-    // The attempt's work: one rewrite of the prompt against the local corpus.
-    'attempt.rewrite': async ({ goal, subtask }) => {
+    // One shared call produces the candidate first queries; the manager reduces them.
+    'attempt.seeds': async ({ goal, count }) => {
+      if (!seeds) return { seeds: [goal] }
+      const pool = await seeds({ goal, count })
+      return { seeds: await diverseSeeds(pool, count, embed || (async () => [])).catch(() => pool.slice(0, count)) }
+    },
+    // The attempt's work: one rewrite of its own seed against the local corpus.
+    'attempt.rewrite': async ({ goal, seed, subtask }) => {
       if (!rewrite) return { status: 'proposed', proposedText: goal, reason: 'no analysis model configured' }
-      return rewrite({ goal, subtask })
+      return rewrite({ goal, query: seed || goal, subtask })
     },
     'attempt.write': async ({ dir, name, body }) => {
       mkdirSync(dir, { recursive: true })

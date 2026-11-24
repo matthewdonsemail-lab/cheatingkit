@@ -209,6 +209,17 @@ export function openDatabase(path = databasePath()) {
       compliance REAL,
       createdAt TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS replHeartbeats (
+      id TEXT PRIMARY KEY,
+      replId TEXT NOT NULL,
+      round INTEGER,
+      kind TEXT NOT NULL,
+      text TEXT NOT NULL,
+      delivery TEXT NOT NULL,
+      status TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      deliveredAt TEXT
+    );
     CREATE INDEX IF NOT EXISTS messagesByTime ON messages(harness, sessionId, timestamp);
     CREATE INDEX IF NOT EXISTS messagesByRolePosition ON messages(harness, sessionId, role, sourcePosition);
     CREATE INDEX IF NOT EXISTS timelineByTime ON timeline(timestamp);
@@ -218,6 +229,7 @@ export function openDatabase(path = databasePath()) {
     CREATE INDEX IF NOT EXISTS replTaskStateByRepl ON replTaskState(replId, status);
     CREATE INDEX IF NOT EXISTS replAuditsByRepl ON replAudits(replId, round);
     CREATE INDEX IF NOT EXISTS replSubagentsByRepl ON replSubagents(replId);
+    CREATE INDEX IF NOT EXISTS replHeartbeatsByRepl ON replHeartbeats(replId, status);
   `)
   initializeTasks(db)
   return db

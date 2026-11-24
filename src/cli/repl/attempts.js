@@ -38,9 +38,12 @@ function attemptCode(code, attemptDir) {
   return `const attemptDir = ${JSON.stringify(attemptDir)}\n${code}`
 }
 
-export async function fanOut({ db, replId, parentCapability, directory, round, copies, code, onHostRequest }) {
+export async function fanOut({ db, replId, parentCapability, directory, round, copies, code, codeFor, onHostRequest }) {
   const attempts = Array.from({ length: copies }, (_, index) => ({ round, index }))
-  const settled = await Promise.allSettled(attempts.map((attempt) => runAttempt({ db, replId, parentCapability, directory, attempt, code, onHostRequest })))
+  const settled = await Promise.allSettled(attempts.map((attempt) => runAttempt({
+    db, replId, parentCapability, directory, attempt,
+    code: codeFor ? codeFor(attempt.index) : code, onHostRequest,
+  })))
   return settled.map((result, index) => (result.status === 'fulfilled'
     ? result.value
     : { ...attempts[index], status: 'error', error: result.reason?.message || String(result.reason) }))

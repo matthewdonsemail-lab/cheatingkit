@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { openTaskStore } from '../context/tasks/client.js'
 import { randomUUID } from 'node:crypto'
+import { replaceText } from './gate.js'
 import { join } from 'node:path'
 import { openDatabase } from '../storage/client.js'
 import { configPath, expandPath, loadConfig } from '../config/client.js'
@@ -217,9 +218,10 @@ function explicitId(request, name) {
 export async function trackProxyRequest(request, { store, harness, protocol, provider, analyze, relay, gate, escalate }) {
   let requestId
   let auditError = null
+  const tracedSession = explicitId(request, 'x-cheatingkit-session-id')
   try {
     const details = requestDetails(await requestPreview(request), protocol)
-    requestId = store.begin({ harness, protocol, provider, ...details, sessionId: explicitId(request, 'x-cheatingkit-session-id'), sourceId: explicitId(request, 'x-cheatingkit-source-id') })
+    requestId = store.begin({ harness, protocol, provider, ...details, sessionId: tracedSession, sourceId: explicitId(request, 'x-cheatingkit-source-id') })
     if (!analyze) store.decision(requestId, { mode: 'off', reason: 'disabled' })
   } catch (error) {
     auditError = error
@@ -242,13 +244,27 @@ export async function trackProxyRequest(request, { store, harness, protocol, pro
         result = { body: rawBody, record: { originalRequest: rawBody, mode: gate.mode || 'enforce', decision: 'allow', terminationReason: 'no eligible latest user text; manual scope clarification required', originalText: null, proposedText: null, evaluations: [], revisions: [], sourceIds: [] } }
       } else {
         try {
+          // Every prompt enters the environment first. The rounds rewrite it in parallel
+          // against the local corpus and the winning candidate is what the gate judges.
+          let window = null
+          if (escalate) {
+            window = await escalate({
+              goal: selected.originalText,
+              harness, sessionId: tracedSession,
+              maxRounds: 2,
+            }).catch((error) => ({ control: 'blocked', error: error.message, rounds: [] }))
+          }
           analysis = analyze ? await analyze(rawBody, { signal: request.signal }) : null
-          if (gate.mode === 'enforce' && ['apply', 'suggest'].includes(analysis?.decision?.mode) && !analysis.decision.proposedText && !gate.originalRequestFallback && !(analysis.decision.context?.taskState?.required && analysis.decision.context.taskState.status !== 'bound')) {
+          const proposed = window?.winner?.text || analysis?.decision?.proposedText
+          // In enforce, apply/suggest mode must have a proposal unless the fallback or an
+          // unbound task explains its absence. A missing rewrite is a hard stop.
+          if (gate.mode === 'enforce' && ['apply', 'suggest'].includes(analysis?.decision?.mode) && !proposed && !gate.originalRequestFallback && !(analysis.decision.context?.taskState?.required && analysis.decision.context.taskState.status !== 'bound')) {
             const error = new Error(`Rewrite unavailable: ${analysis.decision.reason || 'no validated proposal'}`)
             error.availability = analysis.decision.availability
             throw error
           }
-          result = await gate(rawBody, { protocol, proposedText: analysis?.decision?.proposedText, analysisContext: analysis?.decision?.context, signal: request.signal })
+          result = await gate(rawBody, { protocol, proposedText: proposed, analysisContext: analysis?.decision?.context, signal: request.signal })
+          if (window) result.record.window = window
         } catch (error) {
           const mode = gate.mode || 'enforce'
           result = { body: rawBody, record: { originalRequest: rawBody, originalText: analysis?.decision?.originalText, mode, decision: mode === 'observe' ? 'allow' : 'block', terminationReason: `evaluator_error: ${error.message}`, evaluations: [], revisions: [], context: analysis?.decision?.context, proposalStatus: analysis?.decision?.status, availability: error.availability, sourceIds: analysis?.decision?.sourceIds || [] } }
@@ -284,20 +300,39 @@ export async function trackProxyRequest(request, { store, harness, protocol, pro
             return Response.json({error:{type:'cheatingkit_analysis_unavailable',code:'analysis_rate_limited',stage:result.record.availability.stage,message:'Analysis provider is rate-limited. The task was not forwarded.',retryAfterSeconds:retryAfter},requestId},{status:503,headers:{'retry-after':String(retryAfter),...(requestId?{'x-cheatingkit-request-id':requestId}:{})}})
           }
           if (requestId) { try { store.finish(requestId, { observation: 'gate_' + result.record.decision, error: result.record.terminationReason }) } catch {} }
-          // A block is a decision on the wording, not necessarily the end of the goal. When
-          // escalation is wired the environment takes the goal over and works it in rounds.
-          if (escalate && result.record.decision === 'block') {
-            const escalation = await escalate({
+          // A block is a decision on the wording, not the end of the goal. The environment
+          // rewrites the prompt in parallel rounds; a winning candidate becomes the request.
+          if (escalate && result.record.decision === 'block' && !result.record.window) {
+            result.record.window = await escalate({
               goal: result.record.originalText || result.record.proposedText,
-              harness, sessionId: result.record.context?.sessionId,
+              harness, sessionId: tracedSession,
               evidence: result.record.sourceIds,
             }).catch((error) => ({ control: 'blocked', error: error.message, rounds: [] }))
+          }
+          const escalation = result.record.window
+          if (escalate && result.record.decision === 'block' && escalation) {
             if (requestId) { try { store.gateDecision(requestId, { ...store.get(requestId)?.gateDecision, escalation }) } catch {} }
-            if (escalation?.completed) {
-              return Response.json({
-                error: { type: 'cheatingkit_gate', decision: 'escalated', message: `Gate blocked the wording; the environment completed the goal in ${escalation.rounds?.length || 0} audited round(s).`, requestId },
-                escalation,
-              }, { status: 409, headers: requestId ? { 'x-cheatingkit-request-id': requestId } : {} })
+            const winner = escalation?.winner
+            if (escalation?.completed && winner) {
+              // The definitive prompt replaces the request and the turn proceeds, so the
+              // frontier model receives an outline rather than an error.
+              result.record.decision = 'allow'
+              result.record.terminationReason = `escalated: environment rewrote in ${escalation.rounds?.length || 0} audited round(s)`
+              result.record.escalation = escalation
+              if (requestId) { try { store.gateDecision(requestId, { ...store.get(requestId)?.gateDecision, ...result.record }) } catch {} }
+              const replacement = typeof winner.text === 'string' && winner.text.trim()
+                ? replaceText(rawBody, protocol, winner.text)
+                : rawBody
+              if (requestId) { try { store.decision(requestId, { originalText: result.record.originalText, proposedText: winner.text, sourceIds: result.record.sourceIds, mode: 'enforce', reason: result.record.terminationReason, applied: Boolean(winner.text) }) } catch {} }
+              const forwarded = await relay(async () => ({ body: replacement, decision: analysis?.decision }))
+              if (requestId) {
+                const observed = await observeResponse(forwarded, { store, requestId, protocol })
+                const headers = new Headers(observed.headers)
+                headers.set('x-cheatingkit-escalated', String(escalation.rounds?.length || 0))
+                if (escalation.notice) headers.set('x-cheatingkit-heartbeat', Buffer.from(escalation.notice).toString('base64').slice(0, 4000))
+                return new Response(observed.body, { status: observed.status, statusText: observed.statusText, headers })
+              }
+              return forwarded
             }
             result.record.escalation = escalation
           }

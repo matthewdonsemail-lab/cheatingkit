@@ -24,16 +24,22 @@ export async function runRound({ db, env, replId, goal, onHostRequest, copies = 
   ].join('\n')
 
   // The attempt's work is the rewrite itself, not a placeholder file.
-  const code = [
+  // One shared call produces candidate first queries; the seeds are separated by
+  // marginal relevance so attempts do not all retrieve the same evidence.
+  const { seeds } = await onHostRequest({ type: 'attempt.seeds', goal, count: copies })
+
+  // The attempt's work is the rewrite itself, over its own seed.
+  const codeFor = (index) => [
     `console.log(${JSON.stringify(prompt)})`,
-    `const result = await __host.request('attempt.rewrite', { goal: ${JSON.stringify(goal)}, subtask: ${JSON.stringify(bounded.subtask)} })`,
-    `await __host.request('attempt.write', { dir: attemptDir, name: 'rewrite.json', body: JSON.stringify(result) })`,
+    `const seed = ${JSON.stringify(seeds[index] || goal)}`,
+    `const result = await __host.request('attempt.rewrite', { goal: ${JSON.stringify(goal)}, seed, subtask: ${JSON.stringify(bounded.subtask)} })`,
+    `await __host.request('attempt.write', { dir: attemptDir, name: 'rewrite.json', body: JSON.stringify({ ...result, seed }) })`,
     `result.status`,
   ].join('\n')
   const parentCapability = env.capabilityToken()
   const attempts = await fanOut({
     db, replId, parentCapability, directory: env.directory, round,
-    copies, code, onHostRequest,
+    copies, codeFor, onHostRequest,
   })
 
   // The auditor sees every attempt at once, so one good attempt certifies the record.
@@ -44,6 +50,14 @@ export async function runRound({ db, env, replId, goal, onHostRequest, copies = 
     onHostRequest,
   })
   const applied = applyAudit(db, replId, { round, ...verdict })
+  const { raiseHeartbeat } = await import('./heartbeat.js')
+  const clean = verdict.clean?.length || 0
+  raiseHeartbeat(db, {
+    replId, round, kind: verdict.result === 'clean' ? 'clean' : 'retry',
+    text: verdict.result === 'clean'
+      ? `${clean} of ${attempts.length} attempts passed audit; next is ${decide(db, replId).control}.`
+      : `no attempt passed audit (${attempts.length} tried); the record stays ${unresolved(env)[0]?.status || 'pending'}.`,
+  })
   return {
     round, control: 'execute', recordId: record.id,
     attempts: attempts.map(({ index, status, error }) => ({ index, status, error })),
