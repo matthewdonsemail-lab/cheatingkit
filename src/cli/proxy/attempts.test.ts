@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { openDatabase } from '../storage/client.js'
 import { attemptDatabasePath, observeResponse, openAttemptStore, requestDetails, trackProxyRequest } from './attempts.js'
 import { createProxyServer } from './server.js'
-import { inspectAttempts } from './attemptsCli.js'
+import { inspectAttempts, formatAttemptSummary } from './attemptsCli.js'
 import { join } from 'node:path'
 
 function fixture() {
@@ -166,4 +166,19 @@ test('native SSE without a Content-Type is observed before a trailing connection
     await expect(observed.text()).rejects.toThrow('The connection was closed.')
     expect(store.get(requestId)).toMatchObject({ responseCompleted: true, responseExcerpt: '4', observation: 'completed', error: null })
   } finally { close() }
+})
+
+
+test('readable attempt summary exposes revision stages and warnings without hiding the response', () => {
+  const text = formatAttemptSummary({ requestId: 'trace', analysisMode: 'apply', proposedText: 'Revised', analysisApplied: true,
+    observation: 'stream_error', error: 'Connection closed', responseExcerpt: 'I cannot help with that request.',
+    gateDecision: { mode: 'enforce', decision: 'allow', terminationReason: 'validated',
+      evaluations: [{ stage: 'validate', revision: 0, faithful: false, reason: 'Changed action' }, { stage: 'validate', revision: 1, faithful: true, reason: 'Restored action' }],
+      revisions: [{ revision: 1, reason: 'Repair action' }] } })
+  expect(text).toContain('Initial proposal recorded: yes | Revisions recorded: 1')
+  expect(text).toContain('Candidate 1 / validate: not faithful')
+  expect(text).toContain('Candidate 2 / validate: faithful')
+  expect(text).toContain('WARNING: Connection closed')
+  expect(text).toContain('I cannot help with that request.')
+  expect(formatAttemptSummary({ requestId: 'blocked', gateDecision: { mode: 'observe', decision: 'block' } })).toContain('observe mode does not enforce')
 })
