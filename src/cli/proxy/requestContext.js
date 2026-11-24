@@ -5,5 +5,5 @@ export function requestContext(body) {
   const environment = texts.filter((item) => item.role === 'user' && item.text.includes('<environment_context>')).at(-1)?.text || ''
   const cwd = environment.match(/<cwd>([^<]+)<\/cwd>/)?.[1]?.trim()
   const hookEvidence = texts.filter((item) => item.role === 'developer' && item.text.startsWith('CheatingKit local session evidence.')).map((item) => item.text).join('\n').slice(0, 9000)
-  return { cwd, hookEvidence }
+  return { cwd, hookEvidence, harness: 'codex', sessionId: body.client_metadata?.session_id || body.client_metadata?.thread_id || null }
 }

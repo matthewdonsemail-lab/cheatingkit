@@ -1,6 +1,6 @@
 import { requestContext } from './requestContext.js'
 import { openDatabase } from '../storage/client.js'
-import { buildContextPack } from '../context/client.js'
+import { buildStructuredContextPack } from '../context/client.js'
 import { requestDetails } from './attempts.js'
 
 // Evaluations are separate calls with separate instructions. Evidence and request
@@ -57,7 +57,7 @@ export function createMessageGate({ mode = 'observe', maxRevisions = 2, evaluate
       else if (contextForPrompt) record.evidence = String(await contextForPrompt(originalText))
       else {
         const db = openDatabase(dbPath)
-        try { record.evidence = String(await buildContextPack(db, originalText, { maxChars: 4500, cwd: record.context.cwd })) } finally { db.close() }
+        try { record.context.contextPack = await buildStructuredContextPack(db, originalText, { maxChars: 4500, cwd: record.context.cwd, harness: record.context.harness, sessionId: record.context.sessionId }); record.evidence = record.context.contextPack.text } finally { db.close() }
       }
       record.evidence = record.evidence.slice(0, 4500)
       record.sourceIds = [...new Set([...record.evidence.matchAll(/\[([A-Za-z][A-Za-z0-9_-]*\/[^\]\s#]+#[^\]\s]+)\]/g)].map((match) => match[1]))]

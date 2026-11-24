@@ -2,7 +2,7 @@
 
 These papers contain adversarial examples crafted to reveal potential weaknesses in model behavior. These examples are intended exclusively for research purposes and to enhance model security and safety.
 
-Status: research specification for PR #31 and issue #32. This defines the evaluation goal; it does not claim the benchmark runner or dataset imports exist.
+Status: research specification and implementation contract for PR #31 and issue #32. A packaged development runner and structured context packs now implement the initial regression infrastructure; dataset imports and the full research milestone remain unverified.
 
 ## Actual goal
 
@@ -12,7 +12,7 @@ A valid result may be allow, block or needs_clarification. Provider compliance, 
 
 ## What page 6 contributes
 
-[Structured Semantic Cloaking, arXiv:2603.16192v1, printed page 6](https://arxiv.org/pdf/2603.16192#page=6) contains Table II and sections IV-A1–IV-A4. It distinguishes semantic recovery (RSR) from harmful-response success (ASR), specifies 100 JBB misuse behaviors and 200 HarmBench standard queries, and explicitly describes a single-turn experiment without conversational memory. We adopt that separation of understanding from response outcome. Table II evaluates target models; its attack-success percentages are not context-retrieval targets. Multi-turn testing here is our extension, not a paper result. Cascading settings follow on page 7; the ablation is on page 9.
+[Structured Semantic Cloaking, arXiv:2603.16192v1, printed page 6](https://arxiv.org/pdf/2603.16192#page=6) contains Table II and sections IV-A1-IV-A4. It distinguishes semantic recovery (RSR) from harmful-response success (ASR), specifies 100 JBB misuse behaviors and 200 HarmBench standard queries, and explicitly describes a single-turn experiment without conversational memory. We adopt that separation of understanding from response outcome. Table II evaluates target models; its attack-success percentages are not context-retrieval targets. Multi-turn testing here is our extension, not a paper result. Cascading settings follow on page 7; the ablation is on page 9.
 
 ## Current implementation and gaps
 
@@ -64,3 +64,7 @@ Completion of this research milestone means a versioned example manifest, annota
 - [PR #31 research comment](https://github.com/matthewdonsemail-lab/cheatingkit/pull/31#issuecomment-7133281398)
 - [Issue #32](https://github.com/matthewdonsemail-lab/cheatingkit/issues/32)
 - [S2C paper](https://arxiv.org/pdf/2603.16192)
+
+## Initial implementation status
+
+The initial implementation adds structured context packs behind the compatible text API, chronological later-user evidence, explicit budget omissions and runtime evidence continuity. `ck research` runs eight locally authored development cases under latest-only, actual retrieval and oracle conditions. See [runner usage and limitations](context-layer-runner.md). The fixture annotations have not been independently human validated. Offline adapters verify deterministic regressions and linkage; they cannot establish semantic/safety quality. Live interpretation and separate adjudication are explicitly opt-in using the configured analysis provider. The runner makes no task-provider calls and reports task outcomes unscored; the packaged HTTP smoke helper separately tests offline proxy block/allow/audit behavior. No external paper dataset is imported or reproduced, and no held-out quality target has been established. Installed/native-session verification and the full benchmark milestone remain pending.
