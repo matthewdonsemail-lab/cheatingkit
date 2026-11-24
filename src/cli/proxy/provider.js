@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { validateUpstream } from './server.js'
+import { validateUpstream, validateResponsesUpstream } from './server.js'
 import { loadAnalysisProfile } from './analysisProfile.js'
 
 const root = () => process.env.CHEATINGKIT_HOME || join(homedir(), '.cheatingkit')
@@ -19,7 +19,8 @@ export function assertDistinctFromAnalysis(upstreamBaseUrl) {
 export function validateProfile(profile) {
   if (!['openai', 'custom-responses', 'anthropic', 'chat-completions'].includes(profile?.provider)) throw new Error('Choose OpenAI, Anthropic, or a custom Responses or Chat Completions provider')
   if (profile.provider === 'openai' && profile.upstreamBaseUrl !== 'https://api.openai.com/v1') throw new Error('The OpenAI preset uses https://api.openai.com/v1')
-  validateUpstream(profile.upstreamBaseUrl)
+  if (['openai', 'custom-responses'].includes(profile.provider)) validateResponsesUpstream(profile.upstreamBaseUrl)
+  else validateUpstream(profile.upstreamBaseUrl)
   if (typeof profile.model !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:/+@-]*$/.test(profile.model)) throw new Error('A valid model ID is required')
   if (profile.apiKeyEnv !== null && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(profile.apiKeyEnv || '')) throw new Error('API key environment variable must be a valid name or null for a keyless endpoint')
   if (profile.apiKeySource !== undefined && profile.apiKeySource !== 'local') throw new Error('Unknown API key source')

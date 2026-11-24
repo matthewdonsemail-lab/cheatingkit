@@ -41,6 +41,10 @@ Without a configured analysis model, `observe` records an evaluator error and fo
 
 Native credentials are preserved even when a task-provider key is configured. To intentionally substitute the configured destination provider's credentials, use `--credential-mode provider` on start/install or set `CHEATINGKIT_CREDENTIAL_MODE=provider`. Reinstall an existing Codex route to update its authentication setting. Protocol translation uses the selected destination provider's credentials.
 
+ChatGPT-signed-in Codex uses the native Responses destination `https://chatgpt.com/backend-api/codex`; API-key sign-in uses `https://api.openai.com/v1`. Configure the destination that matches the harness's existing authentication. Passing through a ChatGPT token to the API-key destination does not change it into an API key.
+
+Before merging an integration change, install the candidate build and test its real request path. Prompt the user to restart Codex after route changes, then confirm the restarted session appears in `ck proxy attempts` with its gate decision. Tests and CI do not replace this installed verification.
+
 ## Limits
 
 The gate checks a task against locally defined scope and authorization criteria. It does not predict or optimize for a provider's decision, and it does not decide whether an activity is safe in a general sense. Local observations describe what happened in earlier sessions; they are not a guarantee about a new request.

@@ -21,10 +21,19 @@ export function validateUpstream(raw) {
   return url
 }
 
+export function validateResponsesUpstream(raw) {
+  const url = new URL(raw)
+  if (url.pathname.endsWith('/v1')) return validateUpstream(raw)
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || !url.pathname.endsWith('/backend-api/codex')) {
+    throw new Error('Responses upstream must end in /v1 or /backend-api/codex without credentials, query, or fragment')
+  }
+  return url
+}
+
 export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, responsesProtocol = 'responses', anthropicUpstreamBaseUrl, anthropicApiKey, hermesUpstreamBaseUrl, hermesApiKey, fetchUpstream = fetch, analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest, attemptStore, gate = createMessageGate(), credentialMode = 'native' } = {}) {
   if (!['native', 'provider'].includes(credentialMode)) throw new Error('Credential mode must be native or provider')
   if (!upstreamBaseUrl && !anthropicUpstreamBaseUrl && !hermesUpstreamBaseUrl) throw new Error('Configure at least one proxy upstream')
-  const upstream = upstreamBaseUrl ? validateUpstream(upstreamBaseUrl) : null
+  const upstream = upstreamBaseUrl ? (responsesProtocol === 'responses' ? validateResponsesUpstream(upstreamBaseUrl) : validateUpstream(upstreamBaseUrl)) : null
   const anthropicUpstream = anthropicUpstreamBaseUrl ? validateUpstream(anthropicUpstreamBaseUrl) : null
   const hermesUpstream = hermesUpstreamBaseUrl ? validateUpstream(hermesUpstreamBaseUrl) : null
   for (const target of [upstream, anthropicUpstream, hermesUpstream].filter(Boolean)) {

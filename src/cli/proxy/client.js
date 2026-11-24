@@ -4,7 +4,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, r
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createProxyServer, validateUpstream } from './server.js'
+import { createProxyServer, validateUpstream, validateResponsesUpstream } from './server.js'
 import { installCodexRoute, removeCodexRouteFromDisk } from './codex.js'
 import { installClaudeRoute, removeClaudeRouteFromDisk } from './claude.js'
 import { installHermesRoute, removeHermesRouteFromDisk } from './hermes.js'
@@ -84,7 +84,8 @@ function route(args) {
   const profile = loadProfile()
   const upstream = option(args, '--upstream', process.env.CHEATINGKIT_PROXY_UPSTREAM || profile?.upstreamBaseUrl)
   if (!upstream) return null
-  validateUpstream(upstream)
+  if (profile?.upstreamBaseUrl === upstream && ['anthropic', 'chat-completions'].includes(profile.provider)) validateUpstream(upstream)
+  else validateResponsesUpstream(upstream)
   if (!profile || profile.upstreamBaseUrl !== upstream) assertDistinctFromAnalysis(upstream)
   const apiKeyEnv = option(args, '--api-key-env', profile?.upstreamBaseUrl === upstream ? profile.apiKeyEnv : undefined)
   const keyless = args.includes('--keyless') || (apiKeyEnv === null && profile?.upstreamBaseUrl === upstream)

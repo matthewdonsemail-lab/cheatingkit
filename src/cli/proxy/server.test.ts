@@ -1,6 +1,23 @@
 import { createMessageGate } from './gate.js'
 import { test, expect } from 'bun:test'
-import { createProxyServer, validateUpstream } from './server.js'
+import { createProxyServer, validateUpstream, validateResponsesUpstream } from './server.js'
+
+test('native ChatGPT Responses destination preserves the harness OAuth header', async () => {
+  let destination, authorization
+  const proxy = createProxyServer({ port: 0, upstreamBaseUrl: 'https://chatgpt.com/backend-api/codex', apiKey: 'must-not-replace-native-auth', gate: createMessageGate({ mode: 'off' }), fetchUpstream: async (url, init) => {
+    destination = String(url)
+    authorization = init.headers.get('authorization')
+    return Response.json({ id: 'native-ok' })
+  } })
+  try {
+    const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, { method: 'POST', headers: { authorization: 'Bearer native-oauth' }, body: '{"input":"Hello"}' })
+    expect(response.status).toBe(200)
+    expect(destination).toBe('https://chatgpt.com/backend-api/codex/responses')
+    expect(authorization).toBe('Bearer native-oauth')
+    expect(() => validateResponsesUpstream('https://chatgpt.com/backend-api/codex?secret=x')).toThrow()
+    expect(() => validateUpstream('https://chatgpt.com/backend-api/codex')).toThrow()
+  } finally { proxy.stop(true) }
+})
 import { createHermesAnalysis } from './hermesAnalysis.js'
 
 test('Codex Chat translation and native Hermes route use distinct task providers', async () => {
