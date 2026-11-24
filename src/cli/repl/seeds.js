@@ -50,5 +50,6 @@ export function parseSeeds(text) {
   } catch { /* not JSON */ }
   return raw.split('\n')
     .map((line) => line.replace(/^\s*(?:[-*]|\d+[.)])\s*/, '').trim())
-    .filter((line) => line && !line.endsWith(':'))
+    // Code fences and anything long enough to be code rather than a query.
+    .filter((line) => line && !line.startsWith('```') && !line.endsWith(':') && line.length <= 160)
 }

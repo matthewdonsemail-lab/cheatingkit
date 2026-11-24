@@ -88,6 +88,8 @@ export async function rewriteOnce({ context, instructions, input, protocol, mode
   }
   const payload = await response.json()
   const text = (protocol === 'chat-completions' ? chatOutputText(payload) : outputText(payload)).trim()
+  // Unstructured replies (a seed pool, a plain rewrite) carry no typed envelope.
+  if (!structuredOutput) return { status: 'proposed', proposedText: text, reason: 'unstructured' }
   const result = validateAnalysisResult('rewrite', JSON.parse(text))
   return { ...result, transition: analysisTransition(result.status) }
 }
