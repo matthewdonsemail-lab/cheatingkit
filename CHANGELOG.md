@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/matthewdonsemail-lab/cheatingkit/compare/v0.1.0...v0.2.0) (2026-11-24)
+
+
+### Features
+
+* inject local session context at harness prompt boundaries ([#9](https://github.com/matthewdonsemail-lab/cheatingkit/issues/9)) ([9a86522](https://github.com/matthewdonsemail-lab/cheatingkit/commit/9a86522001263f18b6905f401d260311d7032a0c))
+
+
+### Bug Fixes
+
+* separate analysis provider from main route and tolerate text key ([#27](https://github.com/matthewdonsemail-lab/cheatingkit/issues/27)) ([a03101b](https://github.com/matthewdonsemail-lab/cheatingkit/commit/a03101b304927b212e87e547ba4b95d41baec833))
+
 ## [0.1.0](https://github.com/matthewdonsemail-lab/cheatingkit/compare/v0.0.0...v0.1.0) (2026-11-23)
 
 
