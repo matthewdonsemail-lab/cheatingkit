@@ -1,3 +1,4 @@
+import { createMessageGate } from './gate.js'
 import { expect, test } from 'bun:test'
 import { createClaudeMessagesAnalysis } from './claudeAnalysis.js'
 import { createProxyServer } from './server.js'
@@ -102,7 +103,7 @@ test('Claude-only proxy uses separate analysis and task providers, preserves SSE
     contextForPrompt: async () => 'Evidence [claudeCode/session#source]: prior response',
     fetchAnalysis: async (_url: URL, init: RequestInit) => { analysisRequests.push({ body: JSON.parse(init.body as string), key: new Headers(init.headers).get('authorization') }); return Response.json(proposal) },
   })
-  const proxy = createProxyServer({ port: 0, anthropicUpstreamBaseUrl: `http://127.0.0.1:${taskProvider.port}/v1`, anthropicApiKey: 'task-key', analyzeClaudeMessagesRequest: analyze })
+  const proxy = createProxyServer({ credentialMode: 'provider', gate: createMessageGate({ mode: 'off' }), port: 0, anthropicUpstreamBaseUrl: `http://127.0.0.1:${taskProvider.port}/v1`, anthropicApiKey: 'task-key', analyzeClaudeMessagesRequest: analyze })
   try {
     const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/messages`, { method: 'POST', body: raw, headers: { 'content-type': 'application/json', 'anthropic-version': '2023-06-01' } })
     expect(await response.text()).toContain('event: message_stop')

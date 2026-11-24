@@ -26,9 +26,9 @@ function handlers(config, database) {
     'context.pack': async ({ prompt, maxChars }) => ({ text: await buildContextPack(database, prompt, { maxChars: maxChars || 4500 }) }),
     'gate.evaluate': async ({ originalText, proposedText, evidence }) => {
       if (!analysis.model || !analysis.upstreamBaseUrl) {
-        return { decision: 'needs_clarification', reason: 'no analysis model configured', evidence: [] }
+        return { decision: 'block', reason: 'no analysis model configured; enforce fails closed', evidence: [] }
       }
-      const gate = createMessageGate({ mode: 'observe', contextForPrompt: async () => evidence || '' })
+      const gate = createMessageGate({ mode: 'enforce', contextForPrompt: async () => evidence || '' })
       const body = JSON.stringify({ input: proposedText || originalText })
       const { record } = await gate(body, { protocol: 'responses', proposedText })
       return { decision: record.decision, reason: record.terminationReason, evidence: record.sourceIds }
