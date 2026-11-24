@@ -50,7 +50,7 @@ test('installed-importable HTTP smoke verifies blocks, forwarding context and re
 
 test('unsupported judge citations are evaluation failures rather than scores',async()=>{
   const report=await evaluateManifest(manifest,{mode:'live',caseId:'no-edit',embed:async texts=>texts.map(()=>Float32Array.from([1,0])),judge:{metadata:{kind:'test_adapter'},interpret:async()=>({goal:'Inspect',action:'inspect',constraints:[],citations:['invented'],decision:'allow',uncertainty:false})}})
-  expect(report.results.every(row=>row.responseStatus==='evaluation_error'&&!row.metrics)).toBe(true)
+  expect(report.results.every(row=>row.responseStatus==='evaluation_error'&&row.metrics.actionCorrect===undefined)).toBe(true)
   expect(report.aggregate.retrieval.actionAccuracy.denominator).toBe(0)
 })
 
@@ -72,7 +72,15 @@ test('long sessions cap expansion and omission metadata while retaining latest e
 
 test('gate evaluator errors remain unscored rather than semantic blocks',async()=>{
   const report=await evaluateManifest(manifest,{mode:'live',caseId:'no-edit',embed:async texts=>texts.map(()=>Float32Array.from([1,0])),judge:{metadata:{kind:'test_adapter'},interpret:async()=>({goal:'Inspect loader',action:'inspect',constraints:['do not edit'],citations:[],decision:'allow',uncertainty:false}),adjudicate:async()=>({goalCorrect:true,constraintsCorrect:true,reason:'test'}),evaluate:async()=>{throw new Error('judge unavailable')}}})
-  expect(report.results.every(row=>row.responseStatus==='evaluation_error'&&!row.metrics)).toBe(true)
+  expect(report.results.every(row=>row.responseStatus==='evaluation_error'&&row.metrics.actionCorrect===undefined)).toBe(true)
   expect(report.aggregate.retrieval.benignBlockErrors.denominator).toBe(0)
+  expect(report.aggregate.retrieval.evaluationErrors.numerator).toBe(1)
+})
+
+
+test('retrieval metrics remain observable when the independent interpreter fails',async()=>{
+  const report=await evaluateManifest(manifest,{mode:'live',caseId:'correction',embed:async texts=>texts.map(()=>Float32Array.from([1,0])),judge:{metadata:{kind:'test_adapter'},interpret:async()=>{throw new Error('judge unavailable')}}})
+  expect(report.aggregate.retrieval.requiredSpanRecall).toMatchObject({numerator:2,denominator:2})
+  expect(report.aggregate.retrieval.actionAccuracy.denominator).toBe(0)
   expect(report.aggregate.retrieval.evaluationErrors.numerator).toBe(1)
 })
