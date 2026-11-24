@@ -68,7 +68,7 @@ test('Hermes request is analyzed, forwarded with task fields intact, and streame
     return new Response('data: {"choices":[{"delta":{"content":"Done"}}]}\n\ndata: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } })
   } })
   const analyzeHermesRequest = createHermesAnalysis({ mode: 'apply', model: 'analysis-model', upstreamBaseUrl: `http://127.0.0.1:${analysis.port}/v1`, proxyPort: 0, contextForPrompt: async () => 'Corpus evidence' })
-  const proxy = createProxyServer({ port: 0, hermesUpstreamBaseUrl: `http://127.0.0.1:${task.port}/v1`, analyzeHermesRequest, gate: createMessageGate({ mode: 'enforce', contextForPrompt: async () => '', evaluate: async (stage) => stage === 'scope' ? { decision: 'allow', reason: 'in scope' } : { faithful: true, reason: 'preserved' } }) })
+  const proxy = createProxyServer({ port: 0, hermesUpstreamBaseUrl: `http://127.0.0.1:${task.port}/v1`, analyzeHermesRequest, gate: createMessageGate({ mode: 'enforce', contextForPrompt: async () => '', evaluate: async (stage) => stage === 'consistency' ? { consistent: true, decision: 'allow', reason: 'consistent test evaluation' } : stage === 'scope' ? { decision: 'allow', reason: 'in scope' } : { faithful: true, reason: 'preserved' } }) })
   try {
     const body = { model: 'task-model', messages: [{ role: 'user', content: 'Prior task' }, { role: 'assistant', content: 'Prior response' }, { role: 'user', content: 'Explain result' }], tools: [{ type: 'function', function: { name: 'work' } }], stream: true }
     const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })

@@ -48,3 +48,10 @@ Before merging an integration change, install the candidate build and test its r
 ## Limits
 
 The gate checks a task against locally defined scope and authorization criteria. It does not predict or optimize for a provider's decision, and it does not decide whether an activity is safe in a general sense. Local observations describe what happened in earlier sessions; they are not a guarantee about a new request.
+
+
+## Decision consistency
+
+Before a scope allow can proceed to independent fidelity validation, a separate evaluator call checks that the decision agrees with its rationale and the actual request. It receives the same reviewed evidence plus the recorded scope evaluation. A contradictory or unsupported allow, malformed consistency result, disagreement, timeout or evaluator error blocks forwarding in enforce mode. The audit retains both evaluations and a `scope_consistency_failed` termination reason when applicable. This check does not revise the request or retry a safety block.
+
+This adds one analysis-model call per candidate whose scope decision is allow, with the existing 30-second per-call timeout. A scope block or clarification terminates immediately. There remains one initial rewrite proposal and at most two fidelity revisions. The consistency check is model-based and cannot guarantee detection of every semantic contradiction; malformed outputs and reported disagreements always fail closed.

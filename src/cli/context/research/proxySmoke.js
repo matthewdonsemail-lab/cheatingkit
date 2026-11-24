@@ -11,7 +11,7 @@ export async function installedProxySmoke() {
     let calls=0
     const store=openAttemptStore(openDatabase(':memory:'))
     const contextPack={version:1,sourceIds:['codex/s#1'],spans:[{sourceId:'codex/s#1',excerpt:'Inspect only; do not edit.'}],text:'[codex/s#1] Inspect only; do not edit.',omissions:[],budget:{maxChars:4500,usedChars:46}}
-    const gate=createMessageGate({mode:'enforce',evaluate:async stage=>stage==='scope'?{decision,reason:'Explicit offline smoke adapter'}:{faithful:true,reason:'Explicit offline smoke adapter'}})
+    const gate=createMessageGate({mode:'enforce',evaluate:async stage=>stage==='consistency'?{consistent:true,decision:'allow',reason:'consistent test evaluation'}:stage==='scope'?{decision,reason:'Explicit offline smoke adapter'}:{faithful:true,reason:'Explicit offline smoke adapter'}})
     const analyze=async body=>({body,decision:{mode:'apply',proposedText:'Inspect only; do not edit.',context:{cwd:'/project',evidence:contextPack.text,contextPack}}})
     let forwarded
     const proxy=createProxyServer({port:0,upstreamBaseUrl:'http://task.invalid/v1',gate,attemptStore:store,analyzeCodexRequest:analyze,fetchUpstream:async(url,init)=>{calls++;forwarded=JSON.parse(init.body);return new Response('data: '+JSON.stringify({type:'response.output_text.delta',delta:'Inspected.'})+'\n\ndata: '+JSON.stringify({type:'response.completed',response:{status:'completed'}})+'\n\n',{headers:{'content-type':'text/event-stream'}})}})
