@@ -31,7 +31,7 @@ export async function audit({ db, replId, directory, round, goal, records, attem
       `  if (!got.exists) continue`,
       `  let parsed`,
       `  try { parsed = JSON.parse(got.body) } catch { continue }`,
-      `  candidates.push({ dir, status: parsed.status, text: parsed.proposedText })`,
+      `  candidates.push({ dir, status: parsed.status, text: parsed.proposedText, sources: parsed.sources || [] })`,
       `  if ((parsed.status === 'proposed' && typeof parsed.proposedText === 'string' && parsed.proposedText.trim()) || parsed.status === 'unchanged') { clean.push(${JSON.stringify(records[0]?.id || null)}); evidence.push(dir + '/rewrite.json') }`,
       `}`,
       `({ clean: [...new Set(clean.filter(Boolean))], evidence, candidates, winner: candidates.find((c) => c.status === 'proposed') || candidates.find((c) => c.status === 'unchanged') || null })`,
