@@ -41,6 +41,7 @@ function handlers(config, database) {
     'audit.list': async ({ path: target }) => { const { readdirSync } = await import('node:fs'); try { return { entries: readdirSync(target) } } catch { return { entries: [] } } },
     'attempt.touch': async ({ dir, name }) => {
       const { writeFileSync, mkdirSync } = await import('node:fs')
+      const { join } = await import('node:path')
       mkdirSync(dir, { recursive: true })
       writeFileSync(join(dir, name), `attempt ${new Date().toISOString()}\n`)
       return { path: join(dir, name) }
