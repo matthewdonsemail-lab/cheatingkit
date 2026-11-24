@@ -110,8 +110,13 @@ export async function searchSessions(db, query, options = {}, embed = localEmbed
   const vector = rows.map((row) => ({ id: row.id, score: cosine(queryVector, new Float32Array(row.vector.buffer.slice(row.vector.byteOffset, row.vector.byteOffset + row.vector.byteLength))) }))
     .filter((item) => item.score >= 0.3).sort((a, b) => b.score - a.score).slice(0, 50)
   const byId = new Map(rows.map((row) => [row.id, row]))
+  const vectorScores = new Map(vector.map((item) => [item.id, item.score]))
   const scores = new Map()
-  for (const [rank, id] of keyword.entries()) if (byId.has(id)) scores.set(id, (scores.get(id) || 0) + 1 / (60 + rank + 1))
+  // Keyword matches only enter when the same chunk also clears the semantic bar. An
+  // OR-matched FTS row on a common token is otherwise unrelated history, not evidence.
+  for (const [rank, id] of keyword.entries()) {
+    if (byId.has(id) && vectorScores.has(id)) scores.set(id, (scores.get(id) || 0) + 1 / (60 + rank + 1))
+  }
   for (const [rank, item] of vector.entries()) scores.set(item.id, (scores.get(item.id) || 0) + 1 / (60 + rank + 1))
   return [...scores].sort((a, b) => b[1] - a[1]).slice(0, options.limit || 5).map(([id, score]) => {
     const row = byId.get(id)
