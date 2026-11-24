@@ -1,6 +1,7 @@
 import { anthropicPath, relayAnthropicRequest } from './anthropic.js'
 import { relayChatCompletions } from './chatCompletions.js'
 import { relayCodexAnthropic } from './codexAnthropic.js'
+import { relayCodexChat } from './codexChat.js'
 
 const hopHeaders = new Set(['connection', 'content-length', 'host', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade'])
 
@@ -35,6 +36,7 @@ export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, respon
       if (hermesUpstream && path === '/v1/chat/completions' && request.method === 'POST') return relayChatCompletions(request, { upstreamBaseUrl: hermesUpstream.href, apiKey: hermesApiKey, fetchUpstream, analyzeHermesRequest })
       if (!upstream || path !== '/v1/responses' || request.method !== 'POST') return new Response('Not found', { status: 404 })
       if (responsesProtocol === 'anthropic') return relayCodexAnthropic(request, { upstreamBaseUrl: upstream.href, apiKey, fetchUpstream, analyzeCodexRequest })
+      if (responsesProtocol === 'chat-completions') return relayCodexChat(request, { upstreamBaseUrl: upstream.href, apiKey, fetchUpstream, analyzeCodexRequest })
       if (responsesProtocol !== 'responses') return new Response('Unknown Responses provider protocol', { status: 500 })
       const target = new URL('responses', `${upstream.href}/`)
       try {

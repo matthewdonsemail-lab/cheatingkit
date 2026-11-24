@@ -145,3 +145,41 @@ test('Codex Anthropic profile installs translated route and restores hosted sear
     rmSync(home, { recursive: true, force: true })
   }
 }, 60000)
+
+test('Codex Chat profile installs translated route, keeps Hermes destination, and restores settings', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'ck-proxy-codex-chat-'))
+  let received: any = null
+  const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
+    received = { path: new URL(request.url).pathname, authorization: request.headers.get('authorization'), body: await request.json() }
+    return new Response('data: {"id":"chat_mock","choices":[{"index":0,"delta":{"content":"Hello through Chat"},"finish_reason":"stop"}]}\n\ndata: {"choices":[],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}\n\ndata: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } })
+  } })
+  const hermesUpstream = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => Response.json({ id: 'hermes-only' }) })
+  const config = join(home, 'codex.toml')
+  const entry = join(import.meta.dir, '..', 'index.ts')
+  const port = 42000 + Math.floor(Math.random() * 20000)
+  const original = 'model = "original-model"\nweb_search = "cached"\n'
+  writeFileSync(config, original)
+  writeFileSync(join(home, 'proxy-provider.json'), JSON.stringify({ provider: 'chat-completions', upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, model: 'chat-task-model', apiKeyEnv: 'TEST_CHAT_KEY' }))
+  writeFileSync(join(home, 'proxy-hermes-provider.json'), JSON.stringify({ upstreamBaseUrl: `http://127.0.0.1:${hermesUpstream.port}/v1`, model: 'hermes-model', apiKeyEnv: null }))
+  const env = { ...process.env, CHEATINGKIT_HOME: home, CHEATINGKIT_CODEX_CONFIG: config, CHEATINGKIT_CONFIG: join(import.meta.dir, '..', '..', '..', 'cheatingkit.yaml'), TEST_CHAT_KEY: 'provider-secret' }
+  const run = (...args: string[]) => spawnSync(process.execPath, [entry, 'proxy', ...args], { env, encoding: 'utf8', timeout: 15000, windowsHide: true })
+  try {
+    expect(run('install', 'codex', '--port', String(port)).status).toBe(0)
+    expect(readFileSync(config, 'utf8')).toContain('web_search = "disabled"')
+    expect(JSON.parse(readFileSync(join(home, 'proxy.json'), 'utf8')).responsesProtocol).toBe('chat-completions')
+    const response = await fetch(`http://127.0.0.1:${port}/v1/responses`, { method: 'POST', body: JSON.stringify({ model: 'chat-task-model', input: 'Hello', stream: true, tools: [{ type: 'function', name: 'read_file' }] }) })
+    const text = await response.text()
+    expect(text).toContain('event: response.output_text.delta')
+    expect(text).toContain('event: response.completed')
+    expect(received).toMatchObject({ path: '/v1/chat/completions', authorization: 'Bearer provider-secret', body: { model: 'chat-task-model', stream: true, messages: [{ role: 'user', content: 'Hello' }] } })
+    const hermes = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, { method: 'POST', body: JSON.stringify({ model: 'hermes-model', messages: [{ role: 'user', content: 'Hi' }] }) })
+    expect((await hermes.json()).id).toBe('hermes-only')
+    expect(run('remove', 'codex').status).toBe(0)
+    expect(readFileSync(config, 'utf8')).toBe(original)
+    expect(JSON.parse(run('stop').stdout).stopped).toBe(true)
+  } finally {
+    try { process.kill(JSON.parse(readFileSync(join(home, 'proxy.json'), 'utf8')).pid) } catch {}
+    upstream.stop(true); hermesUpstream.stop(true)
+    rmSync(home, { recursive: true, force: true })
+  }
+}, 60000)

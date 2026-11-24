@@ -14,6 +14,7 @@ test('provider profile stores a model and credential reference, never a secret',
     expect(loadProfile()).toEqual(profile)
     expect(() => validateProfile({ ...profile, apiKeyEnv: 'BAD-NAME' })).toThrow()
     expect(validateProfile({ ...profile, provider: 'anthropic' }).provider).toBe('anthropic')
+    expect(validateProfile({ ...profile, provider: 'chat-completions' }).provider).toBe('chat-completions')
     expect(() => validateProfile({ ...profile, provider: 'anthropic', apiKeyEnv: null })).toThrow()
     expect(() => validateProfile({ ...profile, provider: 'anthropic', upstreamBaseUrl: 'https://other.example/v1' })).toThrow()
   } finally {

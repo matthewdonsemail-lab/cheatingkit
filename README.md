@@ -39,7 +39,7 @@ ck timeline
 | `ck index` | Import new conversations and update the local semantic search index. |
 | `ck context --prompt "..."` | Preview the context a prompt would receive. |
 | `ck hooks install` / `ck hooks remove` | Add or remove CheatingKit's prompt integrations. |
-| `ck proxy setup` | Choose OpenAI Responses, Anthropic Messages, or a Responses-compatible provider and model, then connect Codex. |
+| `ck proxy setup` | Choose OpenAI Responses, Anthropic Messages, or a Responses or Chat Completions-compatible provider and model, then connect Codex. |
 | `ck proxy setup claude` | Connect Claude Code to the local Anthropic Messages relay using an Anthropic API key from an environment variable. |
 | `ck proxy setup hermes` | Choose a Chat Completions provider and model, then connect Hermes to the local relay. |
 | `ck proxy start` / `ck proxy status` / `ck proxy stop` | Run and inspect the local provider relay. |
@@ -59,7 +59,7 @@ Claude Code and Codex use `UserPromptSubmit` hooks. Hermes uses a `pre_llm_call`
 
 ### Codex provider proxy preview
 
-The proxy is a separate path from the prompt hooks. Run the interactive provider setup to choose OpenAI Responses, Anthropic Messages, or a custom endpoint that implements the OpenAI Responses API. Enter the model ID and the environment variable containing its API key. The key stays in your environment; CheatingKit stores only the variable name. Custom local Responses endpoints can be keyless.
+The proxy is a separate path from the prompt hooks. Run the interactive provider setup to choose OpenAI Responses, Anthropic Messages, or a custom endpoint that implements the Responses or Chat Completions API. Enter the model ID and the environment variable containing its API key. The key stays in your environment; CheatingKit stores only the variable name. Custom local endpoints can be keyless. If Hermes already has a Chat Completions provider profile, setup offers its URL, model, and key variable name as defaults; Codex saves a separate profile.
 
 ```sh
 ck proxy setup
@@ -68,7 +68,7 @@ ck proxy remove codex
 ck proxy stop
 ```
 
-Set the chosen key environment variable before `ck proxy setup` and keep it available when starting the proxy starts again. The installer starts a loopback server, adds a `cheatingkit` model provider and selected model to Codex's configuration, and records the previous values for restoration. It disables WebSockets for the HTTP Responses route. Restart Codex after installing or removing the route. OpenAI and custom Responses providers must implement `/v1/responses`. The Anthropic choice translates supported Codex `/v1/responses` requests into Anthropic `/v1/messages`, then translates text, function calls, usage, errors, and streaming events back to Codex. It preserves system and developer instructions, conversation turns, supported images, and function tool calls and results. The installer disables Codex hosted web search for this route and restores its previous setting on removal; namespace function tools remain available. Unsupported request features, including previous response IDs, opaque encrypted reasoning replay, non-image media, and built-in tool formats, return an explicit error. Anthropic thinking signatures cannot be converted into Codex encrypted reasoning state, so this route does not provide reasoning-state continuity. `reasoning.summary` is advisory and no summary is synthesized. Optional corpus-backed analysis is configured with `ck proxy analysis setup`; [issue #10](https://github.com/matthewdonsemail-lab/cheatingkit/issues/10) tracks additional adapters.
+Set the chosen key environment variable before `ck proxy setup` and keep it available whenever the proxy starts. The installer starts a loopback server, adds a `cheatingkit` model provider and selected model to Codex's configuration, and records the previous values for restoration. It disables WebSockets for the HTTP Responses route. Restart Codex after installing or removing the route. OpenAI and custom Responses providers must implement `/v1/responses`. The Anthropic choice translates supported Codex `/v1/responses` requests into Anthropic `/v1/messages`; the Chat Completions choice translates them into `/v1/chat/completions`. Both translate text, function calls, usage, errors, and streaming events back to Codex. They preserve instructions, conversation turns, supported images, and function tool calls and results. Chat translation flattens namespace tools for the provider and restores their namespace on return. The installer disables Codex hosted web search for translated routes and restores its previous setting on removal. Unsupported request features, including previous response IDs, opaque encrypted reasoning replay, non-image media, and built-in tool formats, return an explicit error. These routes do not provide reasoning-state continuity; `reasoning.summary: auto` is advisory and no summary is synthesized. Codex-only `client_metadata` is kept local. Optional corpus-backed analysis is configured with `ck proxy analysis setup`; [issue #10](https://github.com/matthewdonsemail-lab/cheatingkit/issues/10) tracks additional adapters.
 
 ### Claude Code provider proxy preview
 

@@ -55,7 +55,7 @@ function route(args) {
   const apiKeyEnv = option(args, '--api-key-env', profile?.upstreamBaseUrl === upstream ? profile.apiKeyEnv : undefined)
   const keyless = args.includes('--keyless') || (apiKeyEnv === null && profile?.upstreamBaseUrl === upstream)
   if (apiKeyEnv && !process.env[apiKeyEnv]) throw new Error(`Set ${apiKeyEnv} in the environment before starting the proxy`)
-  return { upstream, apiKeyEnv, keyless, model: profile?.upstreamBaseUrl === upstream ? profile.model : null, responsesProtocol: profile?.upstreamBaseUrl === upstream && profile.provider === 'anthropic' ? 'anthropic' : 'responses' }
+  return { upstream, apiKeyEnv, keyless, model: profile?.upstreamBaseUrl === upstream ? profile.model : null, responsesProtocol: profile?.upstreamBaseUrl === upstream && ['anthropic', 'chat-completions'].includes(profile.provider) ? profile.provider : 'responses' }
 }
 
 function routes(args) {
@@ -87,17 +87,19 @@ async function configureAnthropicInteractively() {
 }
 
 async function configureInteractively() {
+  const hermesProfile = loadHermesProfile()
   const provider = await clack.select({ message: 'Provider for Codex Responses requests', options: [
     { value: 'openai', label: 'OpenAI API', hint: 'native Responses API' },
     { value: 'custom-responses', label: 'Custom Responses-compatible endpoint', hint: 'must support POST /v1/responses' },
     { value: 'anthropic', label: 'Anthropic API', hint: 'translate supported Codex Responses requests to Messages' },
+    { value: 'chat-completions', label: 'Chat Completions-compatible endpoint', hint: 'translate supported Codex Responses requests to Chat Completions' },
   ] })
   if (clack.isCancel(provider)) { clack.cancel('Proxy setup stopped'); return null }
-  const upstreamBaseUrl = provider === 'openai' ? 'https://api.openai.com/v1' : provider === 'anthropic' ? 'https://api.anthropic.com/v1' : await clack.text({ message: 'Provider API base URL ending in /v1', validate: (value) => { try { validateUpstream(value); return } catch (error) { return error.message } } })
+  const upstreamBaseUrl = provider === 'openai' ? 'https://api.openai.com/v1' : provider === 'anthropic' ? 'https://api.anthropic.com/v1' : await clack.text({ message: 'Provider API base URL ending in /v1', initialValue: provider === 'chat-completions' ? hermesProfile?.upstreamBaseUrl : undefined, validate: (value) => { try { validateUpstream(value); return } catch (error) { return error.message } } })
   if (clack.isCancel(upstreamBaseUrl)) { clack.cancel('Proxy setup stopped'); return null }
-  const model = await clack.text({ message: 'Model ID to select in Codex', validate: (value) => value?.trim() ? undefined : 'Enter a model ID' })
+  const model = await clack.text({ message: 'Model ID to select in Codex', initialValue: provider === 'chat-completions' ? hermesProfile?.model : undefined, validate: (value) => value?.trim() ? undefined : 'Enter a model ID' })
   if (clack.isCancel(model)) { clack.cancel('Proxy setup stopped'); return null }
-  const apiKeyEnv = await clack.text({ message: 'Environment variable containing the provider API key (blank for a keyless local endpoint)', initialValue: provider === 'openai' ? 'OPENAI_API_KEY' : provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : '', validate: (value) => (provider !== 'anthropic' || value) && (!value || /^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) ? undefined : 'Enter an environment variable name' })
+  const apiKeyEnv = await clack.text({ message: 'Environment variable containing the provider API key (blank for a keyless local endpoint)', initialValue: provider === 'openai' ? 'OPENAI_API_KEY' : provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : provider === 'chat-completions' ? hermesProfile?.apiKeyEnv || '' : '', validate: (value) => (provider !== 'anthropic' || value) && (!value || /^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) ? undefined : 'Enter an environment variable name' })
   if (clack.isCancel(apiKeyEnv)) { clack.cancel('Proxy setup stopped'); return null }
   if (apiKeyEnv.trim() && !process.env[apiKeyEnv.trim()]) throw new Error(`Set ${apiKeyEnv.trim()} in this terminal before running proxy setup`)
   return saveProfile({ provider, upstreamBaseUrl, model, apiKeyEnv: apiKeyEnv.trim() || null })
@@ -242,7 +244,7 @@ export async function runProxyCommand(args) {
     const current = readState()
     if (current && ((current.upstreamBaseUrl || null) !== (responses?.upstream || null) || (current.responsesProtocol || 'responses') !== (responses?.responsesProtocol || 'responses') || (current.anthropicUpstreamBaseUrl || null) !== (anthropic?.upstreamBaseUrl || null) || (current.anthropicApiKeyEnv || null) !== (anthropic?.apiKeyEnv || null) || (current.hermesUpstreamBaseUrl || null) !== (hermes?.upstreamBaseUrl || null) || (current.hermesApiKeyEnv || null) !== (hermes?.apiKeyEnv || null))) await runProxyCommand(['stop'])
     await runProxyCommand(['start', '--port', String(port), ...(responses ? ['--upstream', responses.upstream] : [])])
-    console.log(JSON.stringify(args[1] === 'claude' ? installClaudeRoute(`http://127.0.0.1:${port}`) : args[1] === 'hermes' ? installHermesRoute(`http://127.0.0.1:${port}/v1`, hermes.model) : installCodexRoute(`http://127.0.0.1:${port}/v1`, responses.model, { disableWebSearch: responses.responsesProtocol === 'anthropic' })))
+    console.log(JSON.stringify(args[1] === 'claude' ? installClaudeRoute(`http://127.0.0.1:${port}`) : args[1] === 'hermes' ? installHermesRoute(`http://127.0.0.1:${port}/v1`, hermes.model) : installCodexRoute(`http://127.0.0.1:${port}/v1`, responses.model, { disableWebSearch: responses.responsesProtocol !== 'responses' })))
     return
   }
   if (action === 'remove') {

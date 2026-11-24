@@ -7,7 +7,7 @@ const root = () => process.env.CHEATINGKIT_HOME || join(homedir(), '.cheatingkit
 const profilePath = () => join(root(), 'proxy-provider.json')
 
 export function validateProfile(profile) {
-  if (!['openai', 'custom-responses', 'anthropic'].includes(profile?.provider)) throw new Error('Choose OpenAI, Anthropic, or a custom Responses-compatible provider')
+  if (!['openai', 'custom-responses', 'anthropic', 'chat-completions'].includes(profile?.provider)) throw new Error('Choose OpenAI, Anthropic, or a custom Responses or Chat Completions provider')
   if (profile.provider === 'openai' && profile.upstreamBaseUrl !== 'https://api.openai.com/v1') throw new Error('The OpenAI preset uses https://api.openai.com/v1')
   if (profile.provider === 'anthropic' && profile.upstreamBaseUrl !== 'https://api.anthropic.com/v1' && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(profile.upstreamBaseUrl).hostname)) throw new Error('The Anthropic preset uses https://api.anthropic.com/v1')
   validateUpstream(profile.upstreamBaseUrl)
