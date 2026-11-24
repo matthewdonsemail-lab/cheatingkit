@@ -14,6 +14,8 @@ CheatingKit imports durable sessions, messages, tool calls, and known model chan
 
 At a supported pre-call hook, CheatingKit searches that corpus for the current request, follows later user corrections, and prepares a bounded context pack. It can show the user's stated goal, relevant prior wording, observed outcomes, and uncertainty with links to source messages. The harness receives that context alongside the user's request. This helps the next model understand the actual task and what was already tried; a warning prediction is a local estimate based on past observations, not a guarantee about a provider's decision.
 
+When a harness routes through the local proxy, the same corpus feeds the [per-message gate](/docs/gate). The gate checks scope and authorization before a request is forwarded, independently validates that proposed wording preserves every goal and constraint, and returns allow, block, or needs clarification. Hooks deliver context; the gate makes the pre-send decision. Neither predicts or optimizes for a provider's decision.
+
 ## Research basis
 
 - [XSTest](https://arxiv.org/abs/2308.01263) evaluates false refusals of safe prompts that resemble unsafe ones.

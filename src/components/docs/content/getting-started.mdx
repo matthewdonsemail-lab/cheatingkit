@@ -37,7 +37,26 @@ ck index
 ck context --prompt "Continue the loader investigation"
 ```
 
-`ck hooks install` adds the prompt integrations later; `ck hooks remove` removes only CheatingKit's entries.
+`ck hooks install` adds the prompt integrations later; `ck hooks remove` removes only CheatingKit's entries. Hooks deliver context with the harness's own provider and credentials. They do not enforce the [per-message gate](/docs/gate).
+
+## Enable the per-message gate
+
+The gate needs the local provider proxy; prompt hooks alone do not check a request before it is sent. Configure a separate analysis provider first:
+
+```sh
+ck proxy analysis setup
+ck proxy setup codex
+```
+
+The proxy preserves the harness's native credentials by default. The analysis provider has its own key. Start the proxy in `observe` mode to record decisions without changing requests, then switch to `enforce` when the decisions are right:
+
+```sh
+ck proxy start --gate-mode observe
+ck proxy attempts
+ck proxy start --gate-mode enforce
+```
+
+Stop a running proxy before changing modes; `ck proxy status` reports the active mode. In `enforce`, a blocked request makes zero provider calls. See [The per-message gate](/docs/gate) for what is checked and what is recorded.
 
 ## Inspect your history
 

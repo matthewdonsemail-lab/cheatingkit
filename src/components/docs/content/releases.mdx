@@ -52,3 +52,9 @@ ck update --apply
 ## How a version is published
 
 The release workflow stages and checks the CLI package before npm publication. Stable releases follow the versioned release workflow and publish to npm's `latest` tag with a GitHub Release. Passing commits on `main` publish prereleases to npm's `next` tag with GitHub prereleases. The website installers read these npm tags when they run, so installation commands do not need a hardcoded version.
+
+## Credentials for the proxy and gate
+
+Installing the local proxy does not change how a harness authenticates. Native relay credentials are preserved by default: the harness's own token reaches its provider, and a separately configured task-provider key is not substituted. An explicit replacement provider is opt-in with `CHEATINGKIT_CREDENTIAL_MODE=provider` or `--credential-mode provider` on start or install. Reinstall an existing Codex route to change its authentication setting.
+
+The optional analysis provider — used for request analysis and the [per-message gate](/docs/gate) — has its own key, configured with `ck proxy analysis setup`. That key is used only for analysis and gate evaluations, never for the task request. Direct keys are stored in restricted files under `~/.cheatingkit/proxy-secrets`; profiles and status output show only the key source.
