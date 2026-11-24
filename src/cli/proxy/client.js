@@ -149,7 +149,7 @@ export async function runProxyCommand(args) {
   const action = args[0]
   if (action === 'attempts') { inspectAttempts(args.slice(1), { store: openAttemptStore(openDatabase(attemptDatabasePath())) }); return }
   if (action === 'analysis') {
-    if (args[1] === 'status') { console.log(JSON.stringify(loadAnalysisProfile())); return }
+    if (args[1] === 'status') { const profile=loadAnalysisProfile(); console.log(JSON.stringify({...profile,originalRequestFallback:profile.originalRequestFallback===true})); return }
     if (args[1] === 'fallback') {
       if (!['on', 'off'].includes(args[2])) throw new Error('Use ck proxy analysis fallback on|off')
       const profile = loadAnalysisProfile()

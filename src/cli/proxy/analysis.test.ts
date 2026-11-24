@@ -174,3 +174,17 @@ test('typed analysis rejects refusal text, unknown states and fabricated unchang
  }
  expect(()=>validateAnalysisProfile({mode:'apply',model:'model',upstreamBaseUrl:'https://analysis.invalid/v1',apiKeyEnv:null,originalRequestFallback:'yes'})).toThrow('boolean')
 })
+
+test('typed unchanged null preserves exact original request bytes without model reconstruction',async()=>{
+  const text='Inspect\tthis file.\n  Preserve spacing and Unicode: café.'
+  const bytes=' { "input" : '+JSON.stringify(text)+', "stream": true } '
+  let instructions=''
+  const analyze=createCodexAnalysis({mode:'apply',structuredOutput:true,model:'analysis-unchanged-null',upstreamBaseUrl:'https://analysis.invalid/v1',contextForPrompt:async()=>'',fetchAnalysis:async(_url,init)=>{
+    instructions=JSON.parse(init.body as string).instructions
+    return Response.json({output_text:JSON.stringify({status:'unchanged',proposedText:null,reason:'No wording change needed'})})
+  }})
+  const result=await analyze(bytes)
+  expect(result.body).toBe(bytes)
+  expect(result.decision).toMatchObject({status:'unchanged',proposedText:text,applied:false})
+  expect(instructions).toContain('unchanged requires proposedText:null')
+})

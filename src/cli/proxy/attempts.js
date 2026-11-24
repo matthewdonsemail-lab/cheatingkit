@@ -244,8 +244,9 @@ export async function trackProxyRequest(request, { store, harness, protocol, pro
         }
         result = await gate(rawBody, { protocol, proposedText: analysis?.decision?.proposedText, analysisContext: analysis?.decision?.context, signal: request.signal })
       } catch (error) {
-        result = { body: rawBody, record: { originalRequest: rawBody, originalText: analysis?.decision?.originalText, mode: gate.mode || 'enforce', decision: 'block', terminationReason: `evaluator_error: ${error.message}`, evaluations: [], revisions: [], availability: error.availability, sourceIds: analysis?.decision?.sourceIds || [] } }
+        result = { body: rawBody, record: { originalRequest: rawBody, originalText: analysis?.decision?.originalText, mode: gate.mode || 'enforce', decision: 'block', terminationReason: `evaluator_error: ${error.message}`, evaluations: [], revisions: [], context: analysis?.decision?.context, proposalStatus: analysis?.decision?.status, availability: error.availability, sourceIds: analysis?.decision?.sourceIds || [] } }
       }
+      result.record.proposalStatus = analysis?.decision?.status || (analysis ? 'unknown' : 'disabled')
       if (store && auditError && result.record.mode === 'enforce') {
         result.record.decision = 'block'; result.record.terminationReason = 'attempt audit unavailable'
       }
@@ -267,7 +268,7 @@ export async function trackProxyRequest(request, { store, harness, protocol, pro
         } catch { /* the gate audit remains authoritative */ }
       }
       if (result.record.mode === 'enforce' && result.record.decision !== 'allow') {
-        if (result.record.availability?.status === 429) {
+        if ([429,503].includes(result.record.availability?.status)) {
           const retryAfter = Math.max(1, Math.ceil((result.record.availability.retryAfterMs || 1000) / 1000))
           if(requestId) { try { store.finish(requestId,{httpStatus:503,observation:'analysis_unavailable',error:`analysis_rate_limited: ${result.record.availability.stage}`}) }catch{} }
           return Response.json({error:{type:'cheatingkit_analysis_unavailable',code:'analysis_rate_limited',stage:result.record.availability.stage,message:'Analysis provider is rate-limited. The task was not forwarded.',retryAfterSeconds:retryAfter},requestId},{status:503,headers:{'retry-after':String(retryAfter),...(requestId?{'x-cheatingkit-request-id':requestId}:{})}})
