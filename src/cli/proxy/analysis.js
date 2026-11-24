@@ -51,7 +51,7 @@ export function createCodexAnalysis({ mode = 'off', model, upstreamBaseUrl, prox
       }
       context = String(context || '').slice(0, 4500)
       decision.evidenceChars = context.length
-      decision.sourceIds = [...context.matchAll(/\[([A-Za-z][A-Za-z0-9_-]*\/[^\]\s#]+#[^\]\s]+)\]/g)].map((match) => match[1]).slice(0, 30)
+      decision.sourceIds = [...new Set([...context.matchAll(/\[([A-Za-z][A-Za-z0-9_-]*\/[^\]\s#]+#[^\]\s]+)\]/g)].map((match) => match[1]))].slice(0, 30)
       if (signal?.aborted) throw new Error('client disconnected')
       const headers = { 'content-type': 'application/json' }
       if (apiKey) headers.authorization = `Bearer ${apiKey}`
