@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url'
 import { createProxyServer, validateUpstream } from './server.js'
 import { installCodexRoute, removeCodexRouteFromDisk } from './codex.js'
 import { installedVersion } from '../updates/client.js'
+import { loadProfile, saveProfile } from './provider.js'
+import * as clack from '@clack/prompts'
 
 const root = () => process.env.CHEATINGKIT_HOME || join(homedir(), '.cheatingkit')
 const statePath = () => join(root(), 'proxy.json')
@@ -35,16 +37,51 @@ function option(args, name, fallback) {
   return at < 0 ? fallback : args[at + 1]
 }
 
+function route(args) {
+  const profile = loadProfile()
+  const upstream = option(args, '--upstream', process.env.CHEATINGKIT_PROXY_UPSTREAM || profile?.upstreamBaseUrl)
+  if (!upstream) throw new Error('Run ck proxy setup or pass --upstream <provider /v1 URL>')
+  validateUpstream(upstream)
+  const apiKeyEnv = option(args, '--api-key-env', profile?.upstreamBaseUrl === upstream ? profile.apiKeyEnv : undefined)
+  const keyless = args.includes('--keyless') || (apiKeyEnv === null && profile?.upstreamBaseUrl === upstream)
+  if (apiKeyEnv && !process.env[apiKeyEnv]) throw new Error(`Set ${apiKeyEnv} in the environment before starting the proxy`)
+  return { upstream, apiKeyEnv, keyless, model: profile?.upstreamBaseUrl === upstream ? profile.model : null }
+}
+
+async function configureInteractively() {
+  const provider = await clack.select({ message: 'Provider for Codex Responses requests', options: [
+    { value: 'openai', label: 'OpenAI API', hint: 'native Responses API' },
+    { value: 'custom-responses', label: 'Custom Responses-compatible endpoint', hint: 'must support POST /v1/responses' },
+  ] })
+  if (clack.isCancel(provider)) { clack.cancel('Proxy setup stopped'); return null }
+  const upstreamBaseUrl = provider === 'openai' ? 'https://api.openai.com/v1' : await clack.text({ message: 'Provider API base URL ending in /v1', validate: (value) => { try { validateUpstream(value); return } catch (error) { return error.message } } })
+  if (clack.isCancel(upstreamBaseUrl)) { clack.cancel('Proxy setup stopped'); return null }
+  const model = await clack.text({ message: 'Model ID to select in Codex', validate: (value) => value?.trim() ? undefined : 'Enter a model ID' })
+  if (clack.isCancel(model)) { clack.cancel('Proxy setup stopped'); return null }
+  const apiKeyEnv = await clack.text({ message: 'Environment variable containing the provider API key (blank for a keyless local endpoint)', initialValue: provider === 'openai' ? 'OPENAI_API_KEY' : '', validate: (value) => !value || /^[A-Za-z_][A-Za-z0-9_]*$/.test(value) ? undefined : 'Enter an environment variable name' })
+  if (clack.isCancel(apiKeyEnv)) { clack.cancel('Proxy setup stopped'); return null }
+  if (apiKeyEnv.trim() && !process.env[apiKeyEnv.trim()]) throw new Error(`Set ${apiKeyEnv.trim()} in this terminal before running proxy setup`)
+  return saveProfile({ provider, upstreamBaseUrl, model, apiKeyEnv: apiKeyEnv.trim() || null })
+}
+
 export async function runProxyCommand(args) {
   const action = args[0]
+  if (action === 'setup') {
+    if (existsSync(join(root(), 'proxy-codex.json'))) throw new Error('Remove the current Codex proxy route before choosing a new provider')
+    clack.intro('CheatingKit provider proxy setup')
+    const profile = await configureInteractively()
+    if (!profile) return
+    clack.log.success(`Saved ${profile.provider} / ${profile.model}. No API key was stored.`)
+    await runProxyCommand(['install', 'codex', ...args.slice(1)])
+    clack.outro('Restart Codex to use the selected model through CheatingKit.')
+    return
+  }
   const port = Number(option(args, '--port', process.env.CHEATINGKIT_PROXY_PORT || 4178))
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Proxy port must be between 1 and 65535')
   if (action === 'serve') {
-    const upstream = option(args, '--upstream', process.env.CHEATINGKIT_PROXY_UPSTREAM)
-    if (!upstream) throw new Error('Set --upstream or CHEATINGKIT_PROXY_UPSTREAM to the harness provider /v1 URL')
-    validateUpstream(upstream)
-    const server = createProxyServer({ port, upstreamBaseUrl: upstream })
-    writeState({ pid: process.pid, port: server.port, startedAt: new Date().toISOString(), version: installedVersion().version, upstreamBaseUrl: upstream })
+    const { upstream, apiKeyEnv, keyless } = route(args)
+    const server = createProxyServer({ port, upstreamBaseUrl: upstream, apiKey: apiKeyEnv ? process.env[apiKeyEnv] : keyless ? '' : undefined })
+    writeState({ pid: process.pid, port: server.port, startedAt: new Date().toISOString(), version: installedVersion().version, upstreamBaseUrl: upstream, apiKeyEnv: apiKeyEnv || null })
     console.log(`CheatingKit proxy listening on http://127.0.0.1:${server.port}/v1`)
     const close = () => { server.stop(true); if (readState()?.pid === process.pid) rmSync(statePath(), { force: true }); process.exit(0) }
     process.on('SIGTERM', close)
@@ -58,13 +95,11 @@ export async function runProxyCommand(args) {
     return
   }
   if (action === 'start') {
-    const upstream = option(args, '--upstream', process.env.CHEATINGKIT_PROXY_UPSTREAM)
-    if (!upstream) throw new Error('Set --upstream or CHEATINGKIT_PROXY_UPSTREAM to the harness provider /v1 URL')
-    validateUpstream(upstream)
+    const { upstream, apiKeyEnv, keyless } = route(args)
     const state = readState()
     const live = state && await health(state.port)
     if (state && live?.pid === state.pid) {
-      if (state.port !== port || state.upstreamBaseUrl !== upstream) throw new Error('Proxy is already running with different port or upstream; stop it before changing the route')
+      if (state.port !== port || state.upstreamBaseUrl !== upstream || (state.apiKeyEnv || null) !== (apiKeyEnv || null)) throw new Error('Proxy is already running with different port or provider; stop it before changing the route')
       console.log(JSON.stringify({ running: true, reused: true, ...state })); return
     }
     if (await health(port)) throw new Error(`A CheatingKit proxy is already listening on port ${port} without matching state`)
@@ -73,7 +108,7 @@ export async function runProxyCommand(args) {
     if (existsSync(logPath) && statSync(logPath).size > 1024 * 1024) renameSync(logPath, `${logPath}.1`)
     const log = openSync(logPath, 'a')
     let child
-    try { child = spawn(process.execPath, [entry, 'proxy', 'serve', '--port', String(port), '--upstream', upstream], { detached: true, windowsHide: true, stdio: ['ignore', log, log], env: process.env }) }
+    try { child = spawn(process.execPath, [entry, 'proxy', 'serve', '--port', String(port), '--upstream', upstream, ...(apiKeyEnv ? ['--api-key-env', apiKeyEnv] : keyless ? ['--keyless'] : [])], { detached: true, windowsHide: true, stdio: ['ignore', log, log], env: process.env }) }
     finally { closeSync(log) }
     child.unref()
     for (let attempt = 0; attempt < 40; attempt++) {
@@ -93,11 +128,9 @@ export async function runProxyCommand(args) {
   }
   if (action === 'install') {
     if (args[1] !== 'codex') throw new Error('Only the Codex proxy route is implemented')
-    const upstream = option(args, '--upstream', process.env.CHEATINGKIT_PROXY_UPSTREAM)
-    if (!upstream) throw new Error('Set --upstream or CHEATINGKIT_PROXY_UPSTREAM')
-    validateUpstream(upstream)
+    const { upstream, model } = route(args)
     await runProxyCommand(['start', '--port', String(port), '--upstream', upstream])
-    console.log(JSON.stringify(installCodexRoute(`http://127.0.0.1:${port}/v1`)))
+    console.log(JSON.stringify(installCodexRoute(`http://127.0.0.1:${port}/v1`, model)))
     return
   }
   if (action === 'remove') {
@@ -105,5 +138,5 @@ export async function runProxyCommand(args) {
     console.log(JSON.stringify(removeCodexRouteFromDisk()))
     return
   }
-  throw new Error('Use ck proxy start|status|stop|serve|install codex|remove codex')
+  throw new Error('Use ck proxy setup|start|status|stop|serve|install codex|remove codex')
 }

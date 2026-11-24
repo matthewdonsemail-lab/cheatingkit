@@ -14,7 +14,7 @@ export function validateUpstream(raw) {
   return url
 }
 
-export function createProxyServer({ port = 4178, upstreamBaseUrl, fetchUpstream = fetch } = {}) {
+export function createProxyServer({ port = 4178, upstreamBaseUrl, apiKey, fetchUpstream = fetch } = {}) {
   const upstream = validateUpstream(upstreamBaseUrl)
   if (['127.0.0.1', 'localhost', '[::1]'].includes(upstream.hostname) && Number(upstream.port) === port) throw new Error('Proxy upstream cannot point back to CheatingKit')
   const server = Bun.serve({
@@ -25,8 +25,13 @@ export function createProxyServer({ port = 4178, upstreamBaseUrl, fetchUpstream 
       if (path !== '/v1/responses' || request.method !== 'POST') return new Response('Not found', { status: 404 })
       const target = new URL('responses', `${upstream.href}/`)
       try {
+        const headers = relayHeaders(request.headers)
+        if (apiKey !== undefined) {
+          headers.delete('authorization')
+          if (apiKey) headers.set('authorization', `Bearer ${apiKey}`)
+        }
         const response = await fetchUpstream(target, {
-          method: 'POST', headers: relayHeaders(request.headers), body: request.body,
+          method: 'POST', headers, body: request.body,
           signal: request.signal, duplex: 'half', redirect: 'manual',
         })
         return new Response(response.body, { status: response.status, statusText: response.statusText, headers: relayHeaders(response.headers) })

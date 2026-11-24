@@ -19,7 +19,7 @@ function rootEnd(lines) {
   return found < 0 ? lines.length : found
 }
 
-export function addCodexRoute(content, baseUrl) {
+export function addCodexRoute(content, baseUrl, model = null) {
   const eol = content.includes('\r\n') ? '\r\n' : '\n'
   const bom = content.startsWith('\uFEFF') ? '\uFEFF' : ''
   const lines = content.slice(bom.length).split(/\r?\n/)
@@ -32,7 +32,14 @@ export function addCodexRoute(content, baseUrl) {
   const line = `openai_base_url = "${baseUrl}"`
   if (previousAt >= 0) lines.splice(previousAt, 1, marker, line)
   else lines.splice(end, 0, marker, line)
-  return { content: bom + lines.join(eol), previousLine, line }
+  const modelAt = lines.findIndex((item, index) => index < rootEnd(lines) && /^\s*model\s*=/.test(item))
+  const previousModelLine = modelAt < 0 ? null : lines[modelAt]
+  const modelLine = model === null ? null : `model = "${model}"`
+  if (modelLine !== null) {
+    if (modelAt >= 0) lines.splice(modelAt, 1, modelLine)
+    else lines.splice(lines.indexOf(marker) + 2, 0, modelLine)
+  }
+  return { content: bom + lines.join(eol), previousLine, line, previousModelLine, modelLine }
 }
 
 export function removeCodexRoute(content, state) {
@@ -41,17 +48,23 @@ export function removeCodexRoute(content, state) {
   const lines = content.slice(bom.length).split(/\r?\n/)
   const at = lines.findIndex((line, index) => index < rootEnd(lines) && line.trim() === marker)
   if (at < 0 || lines[at + 1] !== state.line) throw new Error('Codex proxy setting was edited; inspect it before restoring')
-  lines.splice(at, 2, ...(state.previousLine === null ? [] : [state.previousLine]))
+  if (state.modelLine) {
+    const modelAt = lines.findIndex((line, index) => index < rootEnd(lines) && line === state.modelLine)
+    if (modelAt < 0) throw new Error('Codex proxy model was edited; inspect it before restoring')
+    lines.splice(modelAt, 1, ...(state.previousModelLine === null ? [] : [state.previousModelLine]))
+  }
+  const markerAt = lines.indexOf(marker)
+  lines.splice(markerAt, 2, ...(state.previousLine === null ? [] : [state.previousLine]))
   return bom + lines.join(eol)
 }
 
-export function installCodexRoute(baseUrl) {
+export function installCodexRoute(baseUrl, model = null) {
   if (existsSync(statePath())) throw new Error('Codex proxy route is already installed; remove it before changing the upstream')
   const path = codexPath()
   const existed = existsSync(path)
   const original = existed ? readFileSync(path, 'utf8') : ''
-  const patch = addCodexRoute(original, baseUrl)
-  writeAtomic(statePath(), JSON.stringify({ path, existed, previousLine: patch.previousLine, line: patch.line }) + '\n')
+  const patch = addCodexRoute(original, baseUrl, model)
+  writeAtomic(statePath(), JSON.stringify({ path, existed, previousLine: patch.previousLine, line: patch.line, previousModelLine: patch.previousModelLine, modelLine: patch.modelLine }) + '\n')
   try { writeAtomic(path, patch.content) }
   catch (error) { rmSync(statePath(), { force: true }); throw error }
   return { installed: true, path, baseUrl }

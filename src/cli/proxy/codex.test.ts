@@ -35,3 +35,10 @@ test('install and remove preserve settings edited after installation', () => {
     rmSync(home, { recursive: true, force: true })
   }
 })
+
+test('selected provider model is restored with the original Codex model', () => {
+  const original = 'model = "old-model"\nopenai_base_url = "https://old.example/v1"\n[features]\nweb_search = true\n'
+  const patch = addCodexRoute(original, 'http://127.0.0.1:4178/v1', 'new-model')
+  expect(patch.content).toContain('model = "new-model"')
+  expect(removeCodexRoute(patch.content, patch)).toBe(original)
+})

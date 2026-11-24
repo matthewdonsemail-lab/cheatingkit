@@ -45,3 +45,17 @@ test('requires a concrete upstream API base URL', () => {
   expect(() => validateUpstream('https://api.openai.com/v1?key=secret')).toThrow()
   expect(() => createProxyServer({ port: 4178, upstreamBaseUrl: 'http://127.0.0.1:4178/v1' })).toThrow()
 })
+
+test('provider key replaces the harness credential without changing the request body', async () => {
+  let received: { authorization: string | null, body: string } | null = null
+  const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
+    received = { authorization: request.headers.get('authorization'), body: await request.text() }
+    return Response.json({ id: 'ok' })
+  } })
+  const proxy = createProxyServer({ port: 0, upstreamBaseUrl: `http://127.0.0.1:${upstream.port}/v1`, apiKey: 'provider-key' })
+  try {
+    const body = '{"model":"picked-model","tools":[{"type":"function","name":"read"}]}'
+    await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, { method: 'POST', headers: { authorization: 'Bearer codex-key' }, body })
+    expect(received).toEqual({ authorization: 'Bearer provider-key', body })
+  } finally { proxy.stop(true); upstream.stop(true) }
+})

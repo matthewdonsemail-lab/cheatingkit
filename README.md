@@ -39,6 +39,7 @@ ck timeline
 | `ck index` | Import new conversations and update the local semantic search index. |
 | `ck context --prompt "..."` | Preview the context a prompt would receive. |
 | `ck hooks install` / `ck hooks remove` | Add or remove CheatingKit's prompt integrations. |
+| `ck proxy setup` | Choose a Responses provider and model in an interactive setup, then connect Codex. |
 | `ck proxy start` / `ck proxy status` / `ck proxy stop` | Run and inspect the local Codex Responses relay. |
 | `ck proxy install codex` / `ck proxy remove codex` | Route Codex through the local relay and restore its prior setting. |
 | `ck mcp` | Serve the same local context through MCP. |
@@ -52,16 +53,16 @@ Claude Code and Codex use `UserPromptSubmit` hooks. Hermes uses a `pre_llm_call`
 
 ### Codex provider proxy preview
 
-The proxy is a separate path from the prompt hooks. It currently relays Codex `/v1/responses` requests unchanged to an explicitly selected API-compatible upstream. Set the upstream to the provider endpoint and ensure Codex sends credentials that endpoint accepts:
+The proxy is a separate path from the prompt hooks. Run the interactive provider setup to choose OpenAI API or a custom endpoint that implements the OpenAI Responses API, enter the model ID, and name the environment variable containing its API key. The key stays in your environment; CheatingKit stores only the variable name. For a keyless local endpoint, leave that field blank.
 
 ```sh
-ck proxy install codex --upstream https://api.openai.com/v1
+ck proxy setup
 ck proxy status
 ck proxy remove codex
 ck proxy stop
 ```
 
-The installer starts a detached loopback server, adds a root `openai_base_url` entry to Codex's configuration, and records the previous value for restoration. It rejects a custom `model_provider` because that provider requires its own route. Restart Codex after installing or removing the route. The proxy does not yet analyze or rewrite messages; [the implementation specification](https://github.com/matthewdonsemail-lab/cheatingkit/issues/10) tracks that work and additional harness adapters.
+Set the chosen key environment variable before `ck proxy setup` and keep it available when starting the proxy again. The installer starts a detached loopback server, adds the local `openai_base_url` and selected model to Codex's configuration, and records the previous values for restoration. Restart Codex after installing or removing the route. The provider must implement `/v1/responses` for both normal and streaming requests. Providers that only expose Chat Completions, Anthropic Messages, or Gemini APIs need separate translation adapters and are not yet selectable. The proxy does not yet analyze or rewrite messages; [issue #10](https://github.com/matthewdonsemail-lab/cheatingkit/issues/10) tracks those stages.
 
 ## Updates
 
