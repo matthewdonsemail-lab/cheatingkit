@@ -1,10 +1,18 @@
 import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import { openDatabase } from '../storage/client.js'
+import { configPath, expandPath, loadConfig } from '../config/client.js'
 
 const warningPattern = /\b(cyber(?:security)?|malware|exploit|phishing|credential theft|safety)\b/i
 const refusalPattern = /\b(warn(?:ing)?|refus(?:e|al|ing)|cannot (?:assist|help)|can't (?:assist|help)|won't (?:assist|help))\b/i
 const maxText = 12_000
 const maxExcerpt = 2_000
+
+export function attemptDatabasePath(env = process.env) {
+  if (env.CHEATINGKIT_DB) return env.CHEATINGKIT_DB
+  if (env.CHEATINGKIT_HOME) return join(env.CHEATINGKIT_HOME, 'sessions.db')
+  return expandPath(loadConfig(configPath(env)).database.path)
+}
 
 function plainContent(content, types) {
   if (typeof content === 'string') return content
@@ -53,6 +61,12 @@ export function openAttemptStore(db = openDatabase()) {
   const insert = db.prepare('INSERT INTO proxyAttempts(requestId,startedAt,harness,protocol,provider,model,sessionId,sourceId,originalText) VALUES(?,?,?,?,?,?,?,?,?)')
   const decisionUpdate = db.prepare('UPDATE proxyAttempts SET originalText=COALESCE(?,originalText),proposedText=?,evidenceSourceIds=?,analysisMode=?,analysisReason=?,analysisApplied=? WHERE requestId=?')
   const complete = db.prepare('UPDATE proxyAttempts SET completedAt=?,httpStatus=?,responseCompleted=?,responseExcerpt=?,observation=?,error=? WHERE requestId=?')
+  const timeline = db.prepare('SELECT timestamp,kind,detail FROM timeline WHERE harness=? AND sessionId=? AND sourceId=? ORDER BY timestamp')
+  const withTimeline = (row) => {
+    const parsed = parseAttempt(row)
+    if (!parsed) return null
+    return { ...parsed, timelineEvents: parsed.sessionId && parsed.sourceId ? timeline.all(parsed.harness, parsed.sessionId, parsed.sourceId) : [] }
+  }
   return {
     begin({ harness, protocol, provider = null, model = null, sessionId = null, sourceId = null, originalText = null }) {
       const requestId = randomUUID()
@@ -65,11 +79,12 @@ export function openAttemptStore(db = openDatabase()) {
     finish(requestId, { httpStatus = null, responseCompleted = false, responseExcerpt = '', observation = null, error = null } = {}) {
       complete.run(new Date().toISOString(), httpStatus, responseCompleted ? 1 : 0, responseExcerpt.slice(0, maxExcerpt), observation, error?.slice(0, 500) || null, requestId)
     },
-    list(limit = 20) {
+    list(limit = 20, prompt = null) {
       const safeLimit = Number.isInteger(limit) && limit >= 1 && limit <= 100 ? limit : 20
-      return db.prepare('SELECT * FROM proxyAttempts ORDER BY startedAt DESC LIMIT ?').all(safeLimit).map(parseAttempt)
+      if (prompt) return db.prepare('SELECT * FROM proxyAttempts WHERE instr(lower(originalText),lower(?)) > 0 ORDER BY startedAt DESC LIMIT ?').all(prompt, safeLimit).map(withTimeline)
+      return db.prepare('SELECT * FROM proxyAttempts ORDER BY startedAt DESC LIMIT ?').all(safeLimit).map(withTimeline)
     },
-    get(requestId) { return parseAttempt(db.prepare('SELECT * FROM proxyAttempts WHERE requestId=?').get(requestId)) },
+    get(requestId) { return withTimeline(db.prepare('SELECT * FROM proxyAttempts WHERE requestId=?').get(requestId)) },
     close() { db.close() },
   }
 }
@@ -84,7 +99,9 @@ export function observeResponse(response, { store, requestId, protocol }) {
   const isStream = response.headers.get('content-type')?.includes('text/event-stream')
   if (!response.body) {
     store.finish(requestId, { httpStatus: status, responseCompleted: true, observation: status >= 400 ? 'http_error' : 'completed' })
-    return response
+    const headers = new Headers(response.headers)
+    headers.set('x-cheatingkit-request-id', requestId)
+    return new Response(null, { status, statusText: response.statusText, headers })
   }
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
@@ -119,7 +136,7 @@ export function observeResponse(response, { store, requestId, protocol }) {
           wire += tail
           if (isStream && wire) parseSseLine(wire)
           if (!isStream) { try { excerpt = jsonText(JSON.parse(wire), protocol).slice(0, maxExcerpt) } catch {} }
-          record(true, streamError)
+          record(!streamError, streamError)
           controller.close()
           return
         }
@@ -135,5 +152,52 @@ export function observeResponse(response, { store, requestId, protocol }) {
     },
     async cancel(reason) { record(false, 'response stream cancelled'); await reader.cancel(reason) },
   })
-  return new Response(body, { status, statusText: response.statusText, headers: response.headers })
+  const headers = new Headers(response.headers)
+  headers.set('x-cheatingkit-request-id', requestId)
+  return new Response(body, { status, statusText: response.statusText, headers })
+}
+
+async function requestPreview(request) {
+  try {
+    const reader = request.clone().body?.getReader()
+    if (!reader) return ''
+    const chunks = []
+    let size = 0
+    while (true) {
+      const item = await reader.read()
+      if (item.done) break
+      size += item.value.byteLength
+      if (size > 2_000_000) { void reader.cancel(); return '' }
+      chunks.push(item.value)
+    }
+    return new TextDecoder().decode(Buffer.concat(chunks))
+  } catch { return '' }
+}
+
+function explicitId(request, name) {
+  const value = request.headers.get(name)
+  return value && /^[A-Za-z0-9_./:@-]{1,200}$/.test(value) ? value : null
+}
+
+// Keeps request and response ownership in the protocol relay. Recording failures
+// never alter the provider exchange; the request ID is local to the corpus DB.
+export async function trackProxyRequest(request, { store, harness, protocol, provider, analyze, relay }) {
+  let requestId
+  try {
+    const details = requestDetails(await requestPreview(request), protocol)
+    requestId = store.begin({ harness, protocol, provider, ...details, sessionId: explicitId(request, 'x-cheatingkit-session-id'), sourceId: explicitId(request, 'x-cheatingkit-source-id') })
+    if (!analyze) store.decision(requestId, { mode: 'off', reason: 'disabled' })
+  } catch { return relay(analyze) }
+  const wrappedAnalysis = analyze && (async (rawBody, context) => {
+    const result = await analyze(rawBody, context)
+    try { store.decision(requestId, result.decision) } catch { /* recording cannot break forwarding */ }
+    return result
+  })
+  try {
+    const response = await relay(wrappedAnalysis)
+    return observeResponse(response, { store, requestId, protocol })
+  } catch (error) {
+    try { store.finish(requestId, { observation: 'relay_error', error: error.message }) } catch {}
+    throw error
+  }
 }

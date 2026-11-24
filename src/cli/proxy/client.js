@@ -15,6 +15,9 @@ import { loadAnalysisProfile, saveAnalysisProfile } from './analysisProfile.js'
 import { createCodexAnalysis } from './analysis.js'
 import { createClaudeMessagesAnalysis } from './claudeAnalysis.js'
 import { createHermesAnalysis } from './hermesAnalysis.js'
+import { attemptDatabasePath, openAttemptStore } from './attempts.js'
+import { inspectAttempts } from './attemptsCli.js'
+import { openDatabase } from '../storage/client.js'
 import { runHarness } from './runner.js'
 import { installStartup, removeStartup, startupStatus } from './startup.js'
 import * as clack from '@clack/prompts'
@@ -107,6 +110,7 @@ async function configureInteractively() {
 
 export async function runProxyCommand(args) {
   const action = args[0]
+  if (action === 'attempts') { inspectAttempts(args.slice(1), { store: openAttemptStore(openDatabase(attemptDatabasePath())) }); return }
   if (action === 'analysis') {
     if (args[1] === 'status') { console.log(JSON.stringify(loadAnalysisProfile())); return }
     if (args[1] === 'last') {
@@ -176,14 +180,17 @@ export async function runProxyCommand(args) {
         writeFileSync(temp, JSON.stringify({ at: new Date().toISOString(), protocol, ...decision }) + '\n', { mode: 0o600 })
         renameSync(temp, path)
     }
-    const analysisOptions = { ...analysis, proxyPort: port, apiKey: analysis.apiKeyEnv ? process.env[analysis.apiKeyEnv] : undefined }
+    const analysisOptions = { ...analysis, proxyPort: port, dbPath: attemptDatabasePath(), apiKey: analysis.apiKeyEnv ? process.env[analysis.apiKeyEnv] : undefined }
     const analyzeCodexRequest = responses && analysis.mode !== 'off' ? createCodexAnalysis({ ...analysisOptions, onDecision: auditDecision('codex') }) : undefined
     const analyzeClaudeMessagesRequest = anthropic && analysis.mode !== 'off' ? createClaudeMessagesAnalysis({ ...analysisOptions, onDecision: auditDecision('claude') }) : undefined
     const analyzeHermesRequest = hermes && analysis.mode !== 'off' ? createHermesAnalysis({ ...analysisOptions, onDecision: auditDecision('hermes') }) : undefined
-    const server = createProxyServer({ port, upstreamBaseUrl: responses?.upstream, apiKey: responses?.apiKeyEnv ? process.env[responses.apiKeyEnv] : responses?.keyless ? '' : undefined, responsesProtocol: responses?.responsesProtocol, anthropicUpstreamBaseUrl: anthropic?.upstreamBaseUrl, anthropicApiKey: anthropic ? process.env[anthropic.apiKeyEnv] : undefined, hermesUpstreamBaseUrl: hermes?.upstreamBaseUrl, hermesApiKey: hermes?.apiKeyEnv ? process.env[hermes.apiKeyEnv] : '', analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest })
+    const attemptStore = openAttemptStore(openDatabase(attemptDatabasePath()))
+    let server
+    try { server = createProxyServer({ port, upstreamBaseUrl: responses?.upstream, apiKey: responses?.apiKeyEnv ? process.env[responses.apiKeyEnv] : responses?.keyless ? '' : undefined, responsesProtocol: responses?.responsesProtocol, anthropicUpstreamBaseUrl: anthropic?.upstreamBaseUrl, anthropicApiKey: anthropic ? process.env[anthropic.apiKeyEnv] : undefined, hermesUpstreamBaseUrl: hermes?.upstreamBaseUrl, hermesApiKey: hermes?.apiKeyEnv ? process.env[hermes.apiKeyEnv] : '', analyzeCodexRequest, analyzeClaudeMessagesRequest, analyzeHermesRequest, attemptStore }) }
+    catch (error) { attemptStore.close(); throw error }
     writeState({ pid: process.pid, port: server.port, startedAt: new Date().toISOString(), version: installedVersion().version, upstreamBaseUrl: responses?.upstream || null, responsesProtocol: responses?.responsesProtocol || null, apiKeyEnv: responses?.apiKeyEnv || null, anthropicUpstreamBaseUrl: anthropic?.upstreamBaseUrl || null, anthropicApiKeyEnv: anthropic?.apiKeyEnv || null, hermesUpstreamBaseUrl: hermes?.upstreamBaseUrl || null, hermesApiKeyEnv: hermes?.apiKeyEnv || null })
     console.log(`CheatingKit proxy listening on http://127.0.0.1:${server.port}/v1`)
-    const close = () => { server.stop(true); if (readState()?.pid === process.pid) rmSync(statePath(), { force: true }); process.exit(0) }
+    const close = () => { server.stop(true); attemptStore.close(); if (readState()?.pid === process.pid) rmSync(statePath(), { force: true }); process.exit(0) }
     process.on('SIGTERM', close)
     process.on('SIGINT', close)
     return
@@ -252,5 +259,5 @@ export async function runProxyCommand(args) {
     console.log(JSON.stringify(args[1] === 'claude' ? removeClaudeRouteFromDisk() : args[1] === 'hermes' ? removeHermesRouteFromDisk() : removeCodexRouteFromDisk()))
     return
   }
-  throw new Error('Use ck proxy setup [claude|hermes]|start|status|stop|run codex|claude|hermes|startup install|status|remove|serve|install codex|claude|hermes|remove codex|claude|hermes|analysis setup|status|last|off')
+  throw new Error('Use ck proxy setup [claude|hermes]|start|status|stop|run codex|claude|hermes|startup install|status|remove|attempts [request ID]|serve|install codex|claude|hermes|remove codex|claude|hermes|analysis setup|status|last|off')
 }
