@@ -1,3 +1,4 @@
+import { ingestPath } from '../harnesses/ingest.js'
 function canonicalCwd(value) { return String(value || '').replace(/\\/g, '/').replace(/\/$/, '').replace(/^([A-Z]):/, (_, drive) => drive.toLowerCase() + ':') }
 
 function plain(raw) {
@@ -17,7 +18,7 @@ function userText(raw) {
   const text = typeof value === 'string' ? value.trim() : Array.isArray(value)
     ? value.filter((part) => ['text', 'input_text'].includes(part?.type) && typeof part.text === 'string').map((part) => part.text).join(' ').trim()
     : ''
-  return /^<(?:task-notification|system-reminder)>|^\[Request interrupted by user\]/i.test(text) ? '' : text
+  return /^<(?:task-notification|system-reminder|environment_context)>|^\[Request interrupted by user\]/i.test(text) ? '' : text
 }
 
 function excerpt(text, limit) { return JSON.stringify(text.replace(/\s+/g, ' ').slice(0, limit)) }
@@ -34,12 +35,23 @@ export async function buildStructuredContextPack(db, prompt, options = {}) {
   const pack = { version: 1, project: options.cwd || null, session: { harness: options.harness || null, sessionId: options.sessionId || null }, query: prompt, spans: [], sourceIds: [], omissions: [], budget: { maxChars, usedChars: 0 }, text: '', status: 'empty' }
   if (typeof prompt !== 'string' || !prompt.trim()) return pack
   if (!db.prepare("SELECT 1 FROM indexState WHERE stage='search'").get()) { pack.status = 'index_unavailable'; return pack }
-  const { searchSessions } = await import('../search/client.js')
+  const { searchSessions, indexSessions, localEmbed } = await import('../search/client.js')
+  // A hook import alone does not make new session history searchable. Refresh
+  // known project transcripts and their changed semantic windows before lookup.
+  if (options.cwd && options.refresh !== false) {
+    const sources = db.prepare("SELECT DISTINCT harness,sourcePath FROM sessions WHERE lower(replace(rtrim(cwd, '/'),char(92),'/'))=lower(replace(rtrim(?, '/'),char(92),'/'))").all(options.cwd)
+    let imported = 0
+    for (const source of sources) imported += ingestPath(db, source.harness, source.sourcePath)
+    const indexed = await indexSessions(db, () => {}, options.embed || localEmbed, { cwd: options.cwd })
+    pack.freshness = { scope: 'known_project_transcripts', imported, ...indexed, refreshedAt: new Date().toISOString() }
+  }
+
   const hits = await searchSessions(db, prompt, { limit: 30, cwd: options.cwd }, options.embed)
   const lookup = db.prepare("SELECT m.*,s.cwd FROM messages m JOIN sessions s ON s.harness=m.harness AND s.sessionId=m.sessionId WHERE m.harness=? AND m.sessionId=? AND m.sourceId=? AND m.role='user'")
   const later = db.prepare("SELECT m.*,s.cwd FROM messages m JOIN sessions s ON s.harness=m.harness AND s.sessionId=m.sessionId WHERE m.harness=? AND m.sessionId=? AND m.role='user' AND m.sourcePosition>? ORDER BY m.sourcePosition DESC LIMIT 256")
   const response = db.prepare("SELECT m.*,s.cwd FROM messages m JOIN sessions s ON s.harness=m.harness AND s.sessionId=m.sessionId WHERE m.harness=? AND m.sessionId=? AND m.role='assistant' AND m.sourcePosition>? AND NOT EXISTS (SELECT 1 FROM messages x WHERE x.harness=m.harness AND x.sessionId=m.sessionId AND x.role='user' AND x.sourcePosition>? AND x.sourcePosition<m.sourcePosition) ORDER BY m.sourcePosition LIMIT 1")
   const candidates = new Map()
+  const recent = options.cwd && hits.length ? db.prepare("SELECT m.*,s.cwd FROM messages m JOIN sessions s ON s.harness=m.harness AND s.sessionId=m.sessionId WHERE m.role='user' AND lower(replace(rtrim(s.cwd, '/'),char(92),'/'))=lower(replace(rtrim(?, '/'),char(92),'/')) ORDER BY COALESCE(m.timestamp,s.updatedAt,'') DESC,m.sourcePosition DESC LIMIT 8").all(options.cwd) : []
   const idOf = row => `${row.harness}/${row.sessionId}#${row.sourceId}`
   const add = (row, kind, score) => {
     const text = row.role === 'user' ? userText(row.body) : plain(row.body)
@@ -47,6 +59,16 @@ export async function buildStructuredContextPack(db, prompt, options = {}) {
     const id = idOf(row)
     if (row.harness === options.harness && row.sessionId === options.sessionId && text === prompt) return
     if (!candidates.has(id)) candidates.set(id, { sourceId: id, harness: row.harness, sessionId: row.sessionId, project: row.cwd || null, position: row.sourcePosition, timestamp: row.timestamp, role: row.role, kind, text, score, selectionReason: kind === 'later_user' ? 'Later user turn; may correct or supersede earlier history, not automatically an instruction for this request' : 'Retrieved session evidence' })
+  }
+  // Keep recent project corrections available even when the latest prompt is a
+  // pasted older request whose semantic matches otherwise dominate retrieval.
+  let continuity = 0
+  for (const row of recent) {
+    if (continuity >= 4) break
+    if (row.harness === options.harness && row.sessionId === options.sessionId && userText(row.body) === prompt) continue
+    if (!userText(row.body)) continue
+    add(row, 'recent_project_user', 1)
+    continuity++
   }
   const expandedSessions = new Map()
   for (const hit of hits) for (const id of hit.messageIds) {
@@ -68,7 +90,7 @@ export async function buildStructuredContextPack(db, prompt, options = {}) {
   // Latest user evidence gets budget priority. Rendering remains chronological within sessions.
   const prioritized = [...candidates.values()].sort((a,b) => b.score-a.score || (a.role === 'user' ? 0 : 1)-(b.role === 'user' ? 0 : 1) || b.position-a.position)
   const selected = []
-  const render = spans => spans.length ? [heading, ...spans.slice().sort((a,b) => a.harness.localeCompare(b.harness) || a.sessionId.localeCompare(b.sessionId) || a.position-b.position).map(span => `- ${span.kind === 'assistant_observation' ? 'Observed assistant response' : span.kind === 'later_user' ? 'Later user message' : 'Earlier user request'} [${span.sourceId}]: ${JSON.stringify(span.excerpt)}`)].join('\n') : ''
+  const render = spans => spans.length ? [heading, ...spans.slice().sort((a,b) => a.harness.localeCompare(b.harness) || a.sessionId.localeCompare(b.sessionId) || a.position-b.position).map(span => `- ${span.kind === 'assistant_observation' ? 'Observed assistant response' : span.kind === 'later_user' ? 'Later user message' : span.kind === 'recent_project_user' ? 'Recent project user message' : 'Earlier user request'} [${span.sourceId}]: ${JSON.stringify(span.excerpt)}`)].join('\n') : ''
   for (const span of prioritized) {
     const limit = span.role === 'assistant' ? 220 : 500
     const candidate = { ...span, excerpt: span.text.slice(0, limit), originalChars: span.text.length, truncated: span.text.length > limit }
@@ -84,6 +106,6 @@ export async function buildStructuredContextPack(db, prompt, options = {}) {
   pack.omissionCount = pack.omissions.length
   if (pack.omissions.length > 64) { pack.omissions = pack.omissions.slice(0, 64); pack.omissionDetailsTruncated = true }
   pack.status = pack.spans.length ? 'selected' : 'empty'
-  pack.selection = { candidateCount: candidates.size, hitCount: hits.length, retrievalLimit: 30, knownLimitations: ['Omissions outside the retrieval hit window are unknown', 'Later user turns are chronological evidence, not automatically classified corrections', 'Historical statements do not verify current repository state'] }
+  pack.selection = { candidateCount: candidates.size, hitCount: hits.length, retrievalLimit: 30, recentProjectTurns: continuity, knownLimitations: ['Omissions outside the retrieval hit window are unknown', 'Later user turns are chronological evidence, not automatically classified corrections', 'Historical statements do not verify current repository state'] }
   return pack
 }

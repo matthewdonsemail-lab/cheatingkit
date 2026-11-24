@@ -47,8 +47,8 @@ function chunksOf(rows) {
 
 function vectorBytes(vector) { return Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength) }
 
-export async function indexSessions(db, report = () => {}, embed = localEmbed) {
-  const sessions = db.prepare('SELECT harness,sessionId FROM sessions ORDER BY harness,sessionId').all()
+export async function indexSessions(db, report = () => {}, embed = localEmbed, { cwd } = {}) {
+  const sessions = db.prepare("SELECT harness,sessionId FROM sessions WHERE (? IS NULL OR lower(replace(rtrim(cwd, '/'),char(92),'/'))=lower(replace(rtrim(?, '/'),char(92),'/'))) ORDER BY harness,sessionId").all(cwd || null, cwd || null)
   const selectRows = db.prepare("SELECT sourceId,role,body FROM messages WHERE harness=? AND sessionId=? AND role IN ('user','assistant') ORDER BY sourcePosition,sourceId")
   const selectHeld = db.prepare('SELECT id,chunkStart,textHash,modelId,vector FROM searchChunks WHERE harness=? AND sessionId=?')
   const upsert = db.prepare(`INSERT INTO searchChunks(harness,sessionId,chunkStart,messageIds,text,textHash,modelId,vector)
@@ -90,7 +90,7 @@ export async function indexSessions(db, report = () => {}, embed = localEmbed) {
     if (changed.length) report(`${session.harness}/${session.sessionId}: indexed ${changed.length} changed windows`)
   }
   db.prepare('INSERT INTO indexState(stage,modelId,indexedAt,chunks) VALUES(?,?,?,?) ON CONFLICT(stage) DO UPDATE SET modelId=excluded.modelId,indexedAt=excluded.indexedAt,chunks=excluded.chunks')
-    .run('search', modelId, new Date().toISOString(), total)
+    .run('search', modelId, new Date().toISOString(), db.prepare('SELECT count(*) AS count FROM searchChunks').get().count)
   return { sessions: sessions.length, chunks: total, embedded }
 }
 
