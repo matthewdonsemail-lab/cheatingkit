@@ -31,6 +31,29 @@ test('recalls cross-harness user history, later scope, and observed response wit
   } finally { db.close(); try { rmSync(dir, { recursive: true, force: true }) } catch {} }
 }, 60000)
 
+test('filters tool notifications and keeps a warning excerpt intact within the context limit', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ck-context-filter-'))
+  const db = openDatabase(join(dir, 'sessions.db'))
+  const embed = async (texts: string[]) => texts.map(() => Float32Array.from([1, 0]))
+  try {
+    db.prepare('INSERT INTO sessions(harness,sessionId,sourcePath) VALUES(?,?,?)').run('claudeCode', 'prior', 'prior.jsonl')
+    const put = db.prepare('INSERT INTO messages(harness,sessionId,sourceId,sourcePosition,role,body) VALUES(?,?,?,?,?,?)')
+    put.run('claudeCode', 'prior', 'tool', 1, 'user', JSON.stringify([{ type: 'tool_result', content: 'secret tool output' }]))
+    put.run('claudeCode', 'prior', 'notify', 2, 'user', '<task-notification>background job finished</task-notification>')
+    put.run('claudeCode', 'prior', 'human', 3, 'user', 'Why was the Reddit port refused?')
+    put.run('claudeCode', 'prior', 'warning', 4, 'assistant', JSON.stringify([{ type: 'text', text: 'I am refusing to port the automated account login code.' }]))
+    db.prepare('INSERT INTO timeline(harness,sessionId,sourceId,kind,detail) VALUES(?,?,?,?,?)').run('claudeCode', 'prior', 'warning', 'cyberWarning', 'observed')
+    await indexSessions(db, () => {}, embed)
+    const pack = await buildContextPack(db, 'Reddit automated account login refusal', { embed, maxChars: 650 })
+    expect(pack).toContain('claudeCode/prior#human')
+    expect(pack).toContain('claudeCode/prior#warning')
+    expect(pack).toContain('I am refusing to port')
+    expect(pack).not.toContain('secret tool output')
+    expect(pack).not.toContain('background job finished')
+    expect(pack.length).toBeLessThanOrEqual(650)
+  } finally { db.close(); try { rmSync(dir, { recursive: true, force: true }) } catch {} }
+})
+
 test('hook installation preserves other hooks and is removable', () => {
   const home = mkdtempSync(join(tmpdir(), 'ck-hooks-'))
   try {
