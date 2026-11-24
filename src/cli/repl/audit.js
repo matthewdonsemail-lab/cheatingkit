@@ -19,24 +19,22 @@ export async function audit({ db, replId, directory, round, goal, records, attem
     await kernel.start()
     const targets = records.map((row) => ({ id: row.id, artifactPath: row.artifactPath }))
     const dirs = attempts.map((attempt) => attempt.directory)
-    // Match on the artifact's file name against its own attempt directory. When the
-    // record names no file, any entry an attempt produced counts as its evidence.
+    // Each attempt is read for its candidate. A candidate only counts when it is a
+    // proposal; the auditor then keeps the first clean one and records the rest.
     const code = [
-      `const targets = ${JSON.stringify(targets)}`,
       `const dirs = ${JSON.stringify(dirs)}`,
       `const clean = []`,
       `const evidence = []`,
+      `const candidates = []`,
       `for (const dir of dirs) {`,
-      `  const listing = await __host.request('audit.list', { path: dir })`,
-      `  const entries = (listing.entries || []).filter((name) => name !== 'state.bin' && name !== 'manifest.json')`,
-      `  for (const target of targets) {`,
-      `    const raw = target.artifactPath || null`,
-      `    const want = raw && /\\.[A-Za-z0-9]+$/.test(raw) ? raw.split(/[\\\\/]/).pop() : null`,
-      `    const hit = want && entries.includes(want) ? want : (!want && entries.length ? entries[0] : null)`,
-      `    if (hit) { clean.push(target.id); evidence.push(dir + '/' + hit) }`,
-      `  }`,
+      `  const got = await __host.request('audit.read', { path: dir + '/rewrite.json' })`,
+      `  if (!got.exists) continue`,
+      `  let parsed`,
+      `  try { parsed = JSON.parse(got.body) } catch { continue }`,
+      `  candidates.push({ dir, status: parsed.status, text: parsed.proposedText })`,
+      `  if (parsed.status === 'proposed' && typeof parsed.proposedText === 'string' && parsed.proposedText.trim()) { clean.push(${JSON.stringify(records[0]?.id || null)}); evidence.push(dir + '/rewrite.json') }`,
       `}`,
-      `({ clean: [...new Set(clean)], evidence: [...new Set(evidence)], listings: dirs.length })`,
+      `({ clean: [...new Set(clean.filter(Boolean))], evidence, candidates, winner: candidates.find((c) => c.status === 'proposed') || null })`,
     ].join('\n')
     kernel.write({ type: 'execute', id: cellId, code, capability: capabilityFrame(db.prepare('SELECT * FROM replCapabilities WHERE token=?').get(token)) })
     const done = await new Promise((resolve, reject) => {
@@ -47,7 +45,7 @@ export async function audit({ db, replId, directory, round, goal, records, attem
     const verdict = JSON.parse(collected.find((event) => event.event === 'result')?.text || '{}')
     const report = { round, goal, attempts: attempts.map(({ index, status, error }) => ({ index, status, error })), verdict, at: new Date().toISOString() }
     writeFileSync(join(auditDir, `round-${round}.json`), JSON.stringify(report, null, 2))
-    return { result: verdict.clean?.length ? 'clean' : 'incomplete', evidence: verdict.evidence || [], completed: verdict.clean || [], report }
+    return { result: verdict.clean?.length ? 'clean' : 'incomplete', evidence: verdict.evidence || [], completed: verdict.clean || [], winner: verdict.winner || null, report }
   } finally {
     revokeCapability(db, token)
     await kernel.stop()

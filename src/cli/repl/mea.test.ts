@@ -7,6 +7,12 @@ import { createEnvironment } from './environment.js'
 import { applyAudit, decide, openState, setArtifactPath } from './mea.js'
 import { runRound } from './rounds.js'
 
+// A rewrite that always proposes, and an auditor that either finds the candidate or not.
+const auditHandlers = (found) => async ({ type, dir, name, body, path }) => {
+  if (type === 'attempt.rewrite') return { status: 'proposed', proposedText: 'rewritten', reason: 'ok' }
+  if (type === 'attempt.write') { const { writeFileSync, mkdirSync } = await import('node:fs'); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, name), body); return { path: join(dir, name) } }
+  return found ? { exists: true, body: JSON.stringify({ status: 'proposed', proposedText: 'rewritten' }) } : { exists: false }
+}
 let db
 let home
 beforeEach(() => {
@@ -65,7 +71,7 @@ test('a round runs, audits the artifact and completes against a real file', asyn
     setArtifactPath(db, record.id, target)
     const outcome = await runRound({
       db, env: e, replId: 'm4', goal: 'produce the artifact',
-      onHostRequest: (async ({ type, dir, name, path: p }) => type === 'attempt.touch' ? { path: join(dir, name) } : { entries: ['artifact.txt'] }),
+      onHostRequest: auditHandlers(true),
     })
     expect(outcome.verdict).toBe('clean')
     expect(db.prepare('SELECT status FROM replTaskState WHERE id=?').get(record.id).status).toBe('completed')
@@ -81,7 +87,7 @@ test('a missing artifact leaves the record pending and the control on execute', 
     setArtifactPath(db, record.id, join(e.directory, 'absent.txt'))
     const outcome = await runRound({
       db, env: e, replId: 'm5', goal: 'produce the artifact',
-      onHostRequest: (async ({ type, dir, name, path: p }) => type === 'attempt.touch' ? { path: join(dir, name) } : { entries: [] }),
+      onHostRequest: auditHandlers(false),
     })
     expect(outcome.verdict).toBe('incomplete')
     expect(decide(db, 'm5').control).toBe('execute')

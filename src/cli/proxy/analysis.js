@@ -67,6 +67,31 @@ function conversationExcerpt(input) {
   return turns.slice(-8).join('\n').slice(-3000) || '(none)'
 }
 
+// One rewrite attempt, shaped for a repl attempt to call over the host bridge. It is
+// the same prompt, corpus and typed contract the proxy uses, minus gate and mode: a
+// round fans several of these out and the auditor keeps the best one.
+export async function rewriteOnce({ context, instructions, input, protocol, model, upstreamBaseUrl, apiKey, fetchAnalysis = fetch, structuredOutput = true, signal }) {
+  const endpoint = new URL(protocol === 'chat-completions' ? 'chat/completions' : 'responses', `${upstreamBaseUrl}/`)
+  const headers = { 'content-type': 'application/json' }
+  if (apiKey) headers.authorization = `Bearer ${apiKey}`
+  const body = protocol === 'chat-completions'
+    ? { model, stream: false, ...(structuredOutput ? { response_format: { type: 'json_object' } } : {}), messages: [{ role: 'system', content: instructions }, { role: 'user', content: `${context}\n\n${input}` }] }
+    : { model, stream: false, instructions, input: `${context}\n\n${input}`, ...(structuredOutput ? { text: { format: { type: 'json_object' } } } : {}) }
+  const response = await requestAnalysis(fetchAnalysis, endpoint, {
+    method: 'POST', headers, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000),
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    const error = new Error(`analysis model returned HTTP ${response.status}`)
+    error.availability = { ...rateLimitMetadata(response), stage: 'rewrite' }
+    throw error
+  }
+  const payload = await response.json()
+  const text = (protocol === 'chat-completions' ? chatOutputText(payload) : outputText(payload)).trim()
+  const result = validateAnalysisResult('rewrite', JSON.parse(text))
+  return { ...result, transition: analysisTransition(result.status) }
+}
+
 export function createCodexAnalysis({ mode = 'off', protocol = 'responses', model, upstreamBaseUrl, proxyPort, apiKey, dbPath, fetchAnalysis = fetch, contextForPrompt, structuredOutput = false, taskStateEnabled = false, onDecision } = {}) {
   if (!modes.has(mode)) throw new Error('Analysis mode must be off, suggest, or apply')
   if (!['responses', 'chat-completions'].includes(protocol)) throw new Error('Analysis protocol must be Responses or Chat Completions')

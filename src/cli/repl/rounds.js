@@ -16,15 +16,20 @@ export async function runRound({ db, env, replId, goal, onHostRequest, copies = 
   const bounded = contract({ goal, record, mode: env.mode })
 
   const prompt = [
-    `Round ${round}, parallel attempt. Do only this subtask.`,
+    `Round ${round}, parallel attempt. Rewrite the prompt so the task outline survives.`,
+    `Goal: ${goal}`,
     `Subtask: ${bounded.subtask}`,
-    `Acceptance: ${bounded.acceptance}`,
     `Constraints: ${bounded.constraints.join('; ')}`,
-    `Write files under attemptDir, not the environment root.`,
-    `Report what you did with console.log.`,
+    `Call attempt.rewrite, then write the candidate to attemptDir so it can be audited.`,
   ].join('\n')
 
-  const code = [`console.log(${JSON.stringify(prompt)})`, stubStep()].join('\n')
+  // The attempt's work is the rewrite itself, not a placeholder file.
+  const code = [
+    `console.log(${JSON.stringify(prompt)})`,
+    `const result = await __host.request('attempt.rewrite', { goal: ${JSON.stringify(goal)}, subtask: ${JSON.stringify(bounded.subtask)} })`,
+    `await __host.request('attempt.write', { dir: attemptDir, name: 'rewrite.json', body: JSON.stringify(result) })`,
+    `result.status`,
+  ].join('\n')
   const parentCapability = env.capabilityToken()
   const attempts = await fanOut({
     db, replId, parentCapability, directory: env.directory, round,
@@ -42,23 +47,12 @@ export async function runRound({ db, env, replId, goal, onHostRequest, copies = 
   return {
     round, control: 'execute', recordId: record.id,
     attempts: attempts.map(({ index, status, error }) => ({ index, status, error })),
-    verdict: verdict.result, applied, report: verdict.report,
+    verdict: verdict.result, winner: verdict.winner, applied, report: verdict.report,
   }
 }
 
 function nextRound(db, replId) {
   return (db.prepare('SELECT COALESCE(MAX(round),0) AS r FROM replAudits WHERE replId=?').get(replId)?.r || 0) + 1
-}
-
-// A requirement body is either code the attempt runs, or prose naming a deliverable.
-function runsAsCode(body) {
-  try { new Function(`return (async () => { ${body} })`) ; return true } catch { return false }
-}
-
-// No executor model yet: the attempt records that it ran and leaves the file the
-// auditor will look for. Replaced once the executor calls the analysis model.
-function stubStep() {
-  return `await __host.request('attempt.touch', { dir: attemptDir, name: 'out.txt' })`
 }
 
 export { setArtifactPath }
