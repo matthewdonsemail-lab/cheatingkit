@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { pipeline, env } from '@huggingface/transformers'
 import { models } from '../models/client.js'
 import { loadConfig, expandPath } from '../config/client.js'
@@ -19,9 +21,12 @@ function textOf(raw) {
 export async function localEmbed(texts) {
   if (!extractor) {
     const config = loadConfig()
-    env.cacheDir = expandPath(config.models.embedding.cachePath)
-    env.allowRemoteModels = true
-    extractor = await pipeline('feature-extraction', embedModel.id, { revision: embedModel.revision, dtype: 'q8', device: 'cpu' })
+    const cacheDir = expandPath(config.models.embedding.cachePath)
+    const pinned = join(cacheDir, embedModel.id, embedModel.revision)
+    const cached = ['config.json', 'tokenizer.json', 'tokenizer_config.json', join('onnx', 'model_quantized.onnx')].every((file) => existsSync(join(pinned, file)))
+    env.cacheDir = cacheDir
+    env.allowRemoteModels = !cached
+    extractor = await pipeline('feature-extraction', cached ? pinned : embedModel.id, { revision: embedModel.revision, dtype: 'q8', device: 'cpu' })
   }
   const output = await extractor(texts, { pooling: 'mean', normalize: true })
   const width = output.dims.at(-1)
