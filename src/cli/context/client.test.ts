@@ -7,7 +7,21 @@ import YAML from 'yaml'
 import { openDatabase } from '../storage/client.js'
 import { buildContextPack } from './client.js'
 import { indexSessions } from '../search/client.js'
-import { installHooks, removeHooks } from '../harnesses/hooks.js'
+import { installHooks, removeHooks, hookCommand } from '../harnesses/hooks.js'
+
+test.skipIf(process.platform !== 'win32')('Codex hook command executes in PowerShell rather than failing during parsing', () => {
+  const home = mkdtempSync(join(tmpdir(), 'ck-powershell-hook-'))
+  try {
+    const configPath = join(home, 'config.yaml')
+    writeFileSync(configPath, YAML.stringify({ version: 1, database: { path: join(home, 'sessions.db') }, harnesses: {}, updates: { check: false } }))
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', hookCommand('codex')], {
+      input: '{}', encoding: 'utf8', timeout: 15000, windowsHide: true,
+      env: { ...process.env, CHEATINGKIT_CONFIG: configPath },
+    })
+    expect(result.stderr).toBe('')
+    expect(result.status).toBe(0)
+  } finally { rmSync(home, { recursive: true, force: true }) }
+})
 
 test('recalls cross-harness user history, later scope, and observed response with source IDs', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ck-context-'))
