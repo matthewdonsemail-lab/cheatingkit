@@ -2,6 +2,27 @@ import { test, expect } from 'bun:test'
 import { createProxyServer, validateUpstream } from './server.js'
 import { createHermesAnalysis } from './hermesAnalysis.js'
 
+test('Codex Chat translation and native Hermes route use distinct task providers', async () => {
+  let codexBody: any, hermesBody: any
+  const codexTask = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
+    codexBody = await request.json()
+    return Response.json({ id: 'chat_mock', model: codexBody.model, choices: [{ index: 0, message: { role: 'assistant', content: 'Codex answer' }, finish_reason: 'stop' }] })
+  } })
+  const hermesTask = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
+    hermesBody = await request.json()
+    return Response.json({ id: 'hermes_mock', choices: [{ message: { content: 'Hermes answer' } }] })
+  } })
+  const proxy = createProxyServer({ port: 0, upstreamBaseUrl: `http://127.0.0.1:${codexTask.port}/v1`, responsesProtocol: 'chat-completions', hermesUpstreamBaseUrl: `http://127.0.0.1:${hermesTask.port}/v1` })
+  try {
+    const codex = await fetch(`http://127.0.0.1:${proxy.port}/v1/responses`, { method: 'POST', body: JSON.stringify({ model: 'codex-model', input: 'Hi' }) })
+    const hermes = await fetch(`http://127.0.0.1:${proxy.port}/v1/chat/completions`, { method: 'POST', body: JSON.stringify({ model: 'hermes-model', messages: [{ role: 'user', content: 'Hi' }] }) })
+    expect((await codex.json()).output[0].content[0].text).toBe('Codex answer')
+    expect((await hermes.json()).choices[0].message.content).toBe('Hermes answer')
+    expect(codexBody.model).toBe('codex-model')
+    expect(hermesBody.model).toBe('hermes-model')
+  } finally { proxy.stop(true); codexTask.stop(true); hermesTask.stop(true) }
+})
+
 test('Hermes request is analyzed, forwarded with task fields intact, and streamed back in Chat Completions format', async () => {
   let analysisBody: any
   let taskBody: any
